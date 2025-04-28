@@ -12,6 +12,25 @@ export interface Item {
     [key: string]: any;
 }
 
+// Project Types
+export interface Project {
+    id: string;
+    name: string;
+    headerImg?: string;
+    projectNotes?: ProjectNote[];
+    isPublic: boolean;
+    createdAt: string;
+}
+
+export interface ProjectNote {
+    id: string;
+    content: string;
+    attachmentUrls?: string[];
+    isPinned: boolean;
+    project?: Project;
+    createdAt: string;
+}
+
 // Personal Dashboard Types
 export interface Book {
     id: string;
@@ -95,6 +114,30 @@ export interface FieldTemplate {
 export interface SidebarProps {
     activeView: string;
     onSelectView: (view: string) => void;
+}
+
+// Project Component Props
+export interface ProjectsViewProps {
+    activeProject?: string;
+    onSelectProject?: (id: string) => void;
+}
+
+export interface ProjectSidebarProps {
+    projects: Project[];
+    activeProject: string | null;
+    onSelectProject: (id: string) => void;
+}
+
+export interface ProjectFormProps {
+    onSubmit: (data: { name: string, isPublic: boolean, headerImg?: string }) => void;
+    onCancel: () => void;
+}
+
+export interface ProjectNoteFormProps {
+    projectId: string;
+    onSubmit: (data: { content: string, attachmentUrls?: string[], isPinned: boolean }) => void;
+    onCancel: () => void;
+    note?: ProjectNote;
 }
 
 // Dashboard View Props

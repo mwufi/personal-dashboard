@@ -1,4 +1,4 @@
-import { BookOpenIcon, DropletIcon, PencilIcon, BarChartIcon, LayoutDashboardIcon } from "lucide-react";
+import { BookOpenIcon, DropletIcon, PencilIcon, BarChartIcon, LayoutDashboardIcon, FolderKanbanIcon } from "lucide-react";
 import { SidebarProps } from "../types/dashboard";
 import { cn } from "../lib/utils";
 
@@ -7,6 +7,11 @@ const navItems = [
         id: "overview",
         label: "Overview",
         icon: <LayoutDashboardIcon className="h-5 w-5" />,
+    },
+    {
+        id: "projects",
+        label: "Projects",
+        icon: <FolderKanbanIcon className="h-5 w-5" />,
     },
     {
         id: "books",
