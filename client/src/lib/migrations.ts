@@ -41,7 +41,14 @@ export async function migrateHabitData() {
     await Promise.all(habitsCreationPromises);
 
     // Create completions
-    const completionsCreationPromises = habitTracks.map(async (track) => {
+    const completionsCreationPromises = habitTracks.map(async (track: {
+        habitName: string;
+        date: string;
+        completed: boolean;
+        notes?: string;
+        createdAt: string;
+        id: string;
+    }) => {
         const habitId = habitIdsByName.get(track.habitName);
         if (!habitId) {
             console.error(`Could not find habit ID for name: ${track.habitName}`);
