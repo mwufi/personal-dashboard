@@ -2,9 +2,15 @@ import { useState, useEffect, useRef } from 'react';
 import { id } from '@instantdb/react';
 import { Project, ProjectNote } from '../types/dashboard';
 import db from '../lib/instant';
-import { MessageCircle, Heart, Repeat, Share, MoreHorizontal, PlusIcon, Trash2, ImageIcon, FolderIcon, UnlockIcon, LockIcon, Pin, PinOff, Music, Play, Pencil, Archive, X } from 'lucide-react';
+import { MessageCircle, Heart, Repeat, Share, MoreHorizontal, PlusIcon, Trash2, ImageIcon, FolderIcon, Music, Play, Pencil, Archive, X } from 'lucide-react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { uploadFile, getFileMetadata } from '../lib/fileService';
+
+import ProjectHeader from './project/ProjectHeader';
+import ProjectSidebar from './project/ProjectSidebar';
+import PostComposer from './project/PostComposer';
+import PostItem from './project/PostItem';
+import ProjectForm from './project/ProjectForm';
 
 // Define interfaces for post data
 interface Post extends ProjectNote {
@@ -14,6 +20,29 @@ interface Post extends ProjectNote {
     commentCount?: number;
     retweetCount?: number;
 }
+
+// Define gradient types
+export interface GradientBackground {
+    type: 'gradient';
+    from: string;
+    to: string;
+}
+
+// Enhanced Project type with our additional fields
+export interface EnhancedProject extends Project {
+    projectNotes?: any[];
+    headerBackground?: GradientBackground;
+}
+
+// Predefined gradients
+export const GRADIENTS = [
+    { from: '#ffefba', to: '#ffffff' }, // Soft peach
+    { from: '#e0f7fa', to: '#bbdefb' }, // Light blue
+    { from: '#e8f5e9', to: '#dcedc8' }, // Mint green
+    { from: '#f3e5f5', to: '#e1bee7' }, // Lavender
+    { from: '#fff9c4', to: '#fff59d' }, // Light yellow
+    { from: '#ffebee', to: '#ffcdd2' }  // Light pink
+];
 
 export default function ProjectsView() {
     const [searchParams, setSearchParams] = useSearchParams();
@@ -129,18 +158,26 @@ export default function ProjectsView() {
             }),
             db.tx.projects[activeProject].link({ projectNotes: newPostId })
         ]);
-        setShowNewForm(false);
     };
 
     // Create a new project
     const handleCreateProject = async (data: { name: string, isPublic: boolean }) => {
         const newProjectId = id();
 
+        // Select a random gradient for the project header
+        const randomGradient = GRADIENTS[Math.floor(Math.random() * GRADIENTS.length)];
+        const headerBackground: GradientBackground = {
+            type: 'gradient',
+            from: randomGradient.from,
+            to: randomGradient.to
+        };
+
         db.transact(
             db.tx.projects[newProjectId].update({
                 name: data.name,
                 isPublic: data.isPublic,
-                createdAt: new Date().toISOString()
+                createdAt: new Date().toISOString(),
+                headerBackground
             })
         );
 
@@ -149,11 +186,19 @@ export default function ProjectsView() {
     };
 
     // Update an existing project
-    const handleUpdateProject = async (projectId: string, data: { name: string, isPublic: boolean }) => {
+    const handleUpdateProject = async (projectId: string, data: { name: string, isPublic: boolean, headerBackground?: GradientBackground }) => {
+        const currentProject = projects.find((p: any) => p.id === projectId);
+        const headerBackground = data.headerBackground || currentProject?.headerBackground || {
+            type: 'gradient',
+            from: GRADIENTS[0].from,
+            to: GRADIENTS[0].to
+        };
+
         db.transact(
             db.tx.projects[projectId].update({
                 name: data.name,
-                isPublic: data.isPublic
+                isPublic: data.isPublic,
+                headerBackground
             })
         );
 
@@ -191,29 +236,6 @@ export default function ProjectsView() {
         db.transact(db.tx.projectNotes[noteId].delete());
     };
 
-    // Format date for display
-    const formatDate = (dateString: string) => {
-        try {
-            const date = new Date(dateString);
-            const now = new Date();
-            const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
-
-            if (diffInSeconds < 60) {
-                return `${diffInSeconds}s`;
-            } else if (diffInSeconds < 3600) {
-                return `${Math.floor(diffInSeconds / 60)}m`;
-            } else if (diffInSeconds < 86400) {
-                return `${Math.floor(diffInSeconds / 3600)}h`;
-            } else if (diffInSeconds < 604800) {
-                return `${Math.floor(diffInSeconds / 86400)}d`;
-            } else {
-                return `${date.toLocaleDateString()}`;
-            }
-        } catch (e) {
-            return dateString;
-        }
-    };
-
     // Toggle like on a post
     const toggleLike = (post: any) => {
         const currentLikes = post.likeCount || 0;
@@ -232,26 +254,6 @@ export default function ProjectsView() {
         );
     };
 
-    // Render image attachments for a post
-    const renderAttachments = (attachmentUrls: string[] = []) => {
-        if (!attachmentUrls.length) return null;
-
-        const isImage = (url: string) => url.match(/\.(jpeg|jpg|gif|png)$/i);
-        const images = attachmentUrls.filter(url => isImage(url));
-
-        if (images.length === 0) return null;
-
-        return (
-            <div className="mt-2 rounded-xl overflow-hidden border border-gray-200">
-                <img
-                    src={images[0]}
-                    alt="Attached media"
-                    className="w-full h-auto max-h-96 object-cover"
-                />
-            </div>
-        );
-    };
-
     // Create a soft pastel color for project avatar
     const getProjectColor = (projectId: string) => {
         const colors = [
@@ -264,317 +266,78 @@ export default function ProjectsView() {
     };
 
     // Get active project details
-    const activeProjectDetails = projects.find((p: any) => p.id === activeProject);
+    const activeProjectDetails = projects.find((p: any) => p.id === activeProject) as EnhancedProject | undefined;
 
     return (
-        <div className="grid grid-cols-[250px_1fr] h-full bg-[#f5f5f7]">
-            {/* Sidebar - Softer design */}
-            <div className="bg-[#2d2d2d] p-4 overflow-auto border-r border-[#3d3d3d]">
-                <div className="flex flex-col h-full">
-                    <div className="flex items-center mb-8 px-2">
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 flex items-center justify-center">
-                            <Music className="h-5 w-5 text-white" />
-                        </div>
-                        <h2 className="text-xl font-bold ml-2 text-white">Mindspace</h2>
-                    </div>
+        <div className="grid grid-cols-[300px_1fr] h-full bg-[#f5f5f7]">
+            {/* Sidebar Component */}
+            <ProjectSidebar
+                projects={projects}
+                activeProject={activeProject}
+                setActiveProject={setActiveProject}
+                onNewProject={() => {
+                    setEditingProject(null);
+                    setShowProjectForm(true);
+                }}
+                onEditProject={(projectId) => {
+                    setEditingProject(projectId);
+                    setShowProjectForm(true);
+                }}
+                onDeleteProject={handleDeleteProject}
+                getProjectColor={getProjectColor}
+            />
 
-                    <div className="space-y-2 mb-6">
-                        <button
-                            className={`w-full text-left px-4 py-3 rounded-md font-medium ${!activeProject ? 'bg-[#4a4a4a] text-white' : 'text-gray-300 hover:text-white hover:bg-[#3a3a3a]'}`}
-                            onClick={() => setActiveProject(null)}
-                        >
-                            <div className="flex items-center">
-                                <FolderIcon className="h-5 w-5 mr-3" />
-                                <span>All Posts</span>
-                            </div>
-                        </button>
-                    </div>
-
-                    <div className="flex items-center justify-between mb-2">
-                        <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest px-4">Your Projects</h3>
-                        <button
-                            onClick={() => {
-                                setEditingProject(null);
-                                setShowProjectForm(true);
-                            }}
-                            className="text-gray-400 hover:text-white p-1 rounded-full hover:bg-[#3a3a3a]"
-                        >
-                            <PlusIcon className="h-4 w-4" />
-                        </button>
-                    </div>
-
-                    {projects.length > 0 ? (
-                        <div className="flex flex-col space-y-1 pr-2 mb-4">
-                            {projects.map((project: any) => (
-                                <div
-                                    key={project.id}
-                                    className={`group flex items-center text-left px-3 py-2 rounded-md ${activeProject === project.id ? 'bg-[#3a3a3a] text-white' : 'text-gray-300 hover:text-white hover:bg-[#3a3a3a]'}`}
-                                >
-                                    <button
-                                        className="flex-1 flex items-center"
-                                        onClick={() => setActiveProject(project.id)}
-                                    >
-                                        <div className={`w-8 h-8 ${getProjectColor(project.id)} rounded flex items-center justify-center flex-shrink-0`}>
-                                            <span className="text-white font-medium">{project.name.charAt(0).toUpperCase()}</span>
-                                        </div>
-                                        <div className="ml-3 truncate">
-                                            <div className="font-medium">{project.name}</div>
-                                            <div className="text-xs text-gray-400">{(project.projectNotes || []).length} posts</div>
-                                        </div>
-                                    </button>
-                                    <div className="opacity-0 group-hover:opacity-100 transition-opacity flex">
-                                        <button
-                                            onClick={() => {
-                                                setEditingProject(project.id);
-                                                setShowProjectForm(true);
-                                            }}
-                                            className="text-gray-400 hover:text-white p-1"
-                                        >
-                                            <Pencil className="h-4 w-4" />
-                                        </button>
-                                        <button
-                                            onClick={() => {
-                                                if (window.confirm(`Are you sure you want to delete "${project.name}"? This will delete all posts within it.`)) {
-                                                    handleDeleteProject(project.id);
-                                                }
-                                            }}
-                                            className="text-gray-400 hover:text-red-400 p-1"
-                                        >
-                                            <Trash2 className="h-4 w-4" />
-                                        </button>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    ) : (
-                        <p className="text-gray-400 text-sm px-4 mb-4">No projects yet</p>
-                    )}
-
-                    <div className="mt-auto pt-4">
-                        <button
-                            onClick={() => {
-                                setEditingProject(null);
-                                setShowProjectForm(true);
-                            }}
-                            className="w-full bg-gradient-to-r from-indigo-500 to-purple-500 text-white rounded-md py-2 font-medium hover:opacity-90 transition"
-                        >
-                            New Project
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            {/* Main Content - Cleaner design */}
+            {/* Main Content */}
             <div className="bg-white overflow-auto">
-                {/* Project form modal */}
+                {/* Project Form Modal */}
                 {showProjectForm && (
-                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-                        <div className="bg-white w-full max-w-md rounded-lg shadow-lg overflow-hidden">
-                            <div className="p-4 border-b flex justify-between items-center">
-                                <h3 className="text-lg font-semibold">{editingProject ? 'Edit Project' : 'Create New Project'}</h3>
-                                <button
-                                    onClick={() => {
-                                        setShowProjectForm(false);
-                                        setEditingProject(null);
-                                    }}
-                                    className="text-gray-500 hover:text-gray-700"
-                                >
-                                    <X className="h-5 w-5" />
-                                </button>
-                            </div>
-
-                            <div className="p-4">
-                                <div className="mb-4">
-                                    <label htmlFor="project-name" className="block text-sm font-medium text-gray-700 mb-1">Project Name</label>
-                                    <input
-                                        type="text"
-                                        id="project-name"
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                                        placeholder="Enter project name"
-                                        defaultValue={editingProject ? projects.find((p: any) => p.id === editingProject)?.name : ''}
-                                    />
-                                </div>
-
-                                <div className="mb-6">
-                                    <label className="flex items-center">
-                                        <input
-                                            type="checkbox"
-                                            id="project-public"
-                                            className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
-                                            defaultChecked={editingProject ? projects.find((p: any) => p.id === editingProject)?.isPublic : false}
-                                        />
-                                        <span className="ml-2 text-sm text-gray-700">Make this project public</span>
-                                    </label>
-                                </div>
-
-                                <div className="flex justify-end space-x-3">
-                                    <button
-                                        onClick={() => {
-                                            setShowProjectForm(false);
-                                            setEditingProject(null);
-                                        }}
-                                        className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
-                                    >
-                                        Cancel
-                                    </button>
-                                    <button
-                                        onClick={() => {
-                                            const nameInput = document.getElementById('project-name') as HTMLInputElement;
-                                            const isPublicInput = document.getElementById('project-public') as HTMLInputElement;
-
-                                            if (!nameInput.value.trim()) {
-                                                alert('Please enter a project name');
-                                                return;
-                                            }
-
-                                            if (editingProject) {
-                                                handleUpdateProject(editingProject, {
-                                                    name: nameInput.value,
-                                                    isPublic: isPublicInput.checked
-                                                });
-                                            } else {
-                                                handleCreateProject({
-                                                    name: nameInput.value,
-                                                    isPublic: isPublicInput.checked
-                                                });
-                                            }
-                                        }}
-                                        className="px-4 py-2 bg-indigo-600 rounded-md text-sm font-medium text-white hover:bg-indigo-700"
-                                    >
-                                        {editingProject ? 'Save Changes' : 'Create Project'}
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                    <ProjectForm
+                        editingProject={editingProject ?
+                            projects.find((p: any) => p.id === editingProject) as EnhancedProject :
+                            undefined
+                        }
+                        onClose={() => {
+                            setShowProjectForm(false);
+                            setEditingProject(null);
+                        }}
+                        onSave={(data) => {
+                            if (editingProject) {
+                                handleUpdateProject(editingProject, data);
+                            } else {
+                                handleCreateProject(data);
+                            }
+                        }}
+                        gradients={GRADIENTS}
+                    />
                 )}
 
-                {/* Project header */}
+                {/* Project Header */}
                 {activeProject && activeProjectDetails && (
-                    <div className="bg-gradient-to-r from-indigo-900 to-purple-900 text-white p-8">
-                        <div className="max-w-[800px] mx-auto">
-                            <div className="flex items-end space-x-6">
-                                <div className={`w-32 h-32 ${getProjectColor(activeProject)} shadow-lg rounded-lg flex items-center justify-center`}>
-                                    <span className="text-4xl font-bold text-white">{activeProjectDetails.name.charAt(0)}</span>
-                                </div>
-                                <div className="flex-1">
-                                    <div className="text-xs uppercase font-bold text-indigo-200">Project</div>
-                                    <h1 className="text-4xl font-bold my-2">{activeProjectDetails.name}</h1>
-                                    <div className="flex items-center text-sm space-x-4 mt-3">
-                                        <div className="flex items-center">
-                                            <span className="font-bold">{(activeProjectDetails.projectNotes || []).length}</span>
-                                            <span className="ml-1 text-indigo-200">posts</span>
-                                        </div>
-                                        <div>
-                                            {activeProjectDetails.isPublic ? (
-                                                <span className="flex items-center px-2 py-1 bg-indigo-800/50 rounded-full text-xs">
-                                                    Public
-                                                </span>
-                                            ) : (
-                                                <span className="flex items-center px-2 py-1 bg-indigo-800/50 rounded-full text-xs">
-                                                    Private
-                                                </span>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
-                                <div>
-                                    <div className="flex space-x-2">
-                                        <button
-                                            onClick={() => {
-                                                setEditingProject(activeProject);
-                                                setShowProjectForm(true);
-                                            }}
-                                            className="p-2 bg-indigo-800/50 rounded-full hover:bg-indigo-700/70"
-                                        >
-                                            <Pencil className="h-4 w-4" />
-                                        </button>
-                                        <button
-                                            onClick={() => {
-                                                if (window.confirm(`Are you sure you want to delete "${activeProjectDetails.name}"? This will delete all posts within it.`)) {
-                                                    handleDeleteProject(activeProject);
-                                                }
-                                            }}
-                                            className="p-2 bg-indigo-800/50 rounded-full hover:bg-red-700/70"
-                                        >
-                                            <Trash2 className="h-4 w-4" />
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                    <ProjectHeader
+                        project={activeProjectDetails}
+                        onEdit={() => {
+                            setEditingProject(activeProject);
+                            setShowProjectForm(true);
+                        }}
+                        onDelete={() => {
+                            if (window.confirm(`Are you sure you want to delete "${activeProjectDetails.name}"? This will delete all posts within it.`)) {
+                                handleDeleteProject(activeProject);
+                            }
+                        }}
+                        getProjectColor={getProjectColor}
+                    />
                 )}
 
                 {/* What's on your mind box + Timeline */}
                 <div className="max-w-[800px] mx-auto p-4">
                     {/* What's on your mind? box - Always present in project view */}
-                    {activeProject && (
-                        <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-6 overflow-hidden">
-                            <div className="p-4">
-                                <div className="flex">
-                                    <div className="mr-3">
-                                        <div className={`w-10 h-10 ${getProjectColor(activeProject)} rounded-full flex items-center justify-center`}>
-                                            <span className="text-white font-bold">{activeProjectDetails?.name.charAt(0).toUpperCase()}</span>
-                                        </div>
-                                    </div>
-                                    <div className="flex-1">
-                                        <textarea
-                                            id="post-content"
-                                            className="w-full p-2 text-lg border-0 focus:ring-0 focus:outline-none"
-                                            placeholder="What's on your mind?"
-                                            rows={2}
-                                        ></textarea>
-                                    </div>
-                                </div>
-
-                                <div id="image-file-name" className="text-xs ml-12 text-indigo-500"></div>
-
-                                <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
-                                    <div className="flex items-center">
-                                        <button
-                                            onClick={() => imageFileRef.current?.click()}
-                                            className="text-gray-500 p-2 rounded-full hover:bg-gray-100"
-                                        >
-                                            <ImageIcon className="h-5 w-5" />
-                                        </button>
-                                        <input
-                                            type="file"
-                                            accept="image/*"
-                                            className="hidden"
-                                            ref={imageFileRef}
-                                            id="image-file"
-                                        />
-                                    </div>
-
-                                    <button
-                                        onClick={async () => {
-                                            const contentInput = document.getElementById('post-content') as HTMLTextAreaElement;
-                                            const filesInput = document.getElementById('image-file') as HTMLInputElement;
-
-                                            if (!contentInput.value.trim()) {
-                                                alert("Please enter some content for your post");
-                                                return;
-                                            }
-
-                                            await handleCreatePost({
-                                                content: contentInput.value,
-                                                files: filesInput.files || undefined
-                                            });
-
-                                            // Clear the input after posting
-                                            contentInput.value = '';
-                                            if (filesInput) filesInput.value = '';
-                                            const fileNameDiv = document.getElementById('image-file-name');
-                                            if (fileNameDiv) fileNameDiv.textContent = '';
-                                        }}
-                                        className="px-4 py-2 bg-indigo-600 text-white rounded-full hover:bg-indigo-700 font-medium text-sm"
-                                    >
-                                        Post
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
+                    {activeProject && activeProjectDetails && (
+                        <PostComposer
+                            project={activeProjectDetails}
+                            getProjectColor={getProjectColor}
+                            onPost={handleCreatePost}
+                            imageFileRef={imageFileRef}
+                        />
                     )}
 
                     {/* No active project state */}
@@ -604,99 +367,27 @@ export default function ProjectsView() {
                             allPosts
                                 .filter(post => post.projectId === activeProject)
                                 .map((post: Post) => (
-                                    <div key={post.id} className="py-4">
-                                        <div className="flex">
-                                            <div className="mr-3">
-                                                <div className={`w-10 h-10 ${getProjectColor(post.projectId)} rounded-full flex items-center justify-center`}>
-                                                    <span className="text-white font-bold">{post.projectName.charAt(0).toUpperCase()}</span>
-                                                </div>
-                                            </div>
-                                            <div className="flex-1">
-                                                <div className="flex items-center">
-                                                    <span className="font-bold mr-1">{post.projectName}</span>
-                                                    <span className="text-gray-500 text-sm">· {formatDate(post.createdAt)}</span>
-                                                    <div className="ml-auto">
-                                                        <button
-                                                            onClick={() => handleDeletePost(post.id)}
-                                                            className="text-gray-400 hover:text-red-500 p-1"
-                                                        >
-                                                            <Trash2 className="h-4 w-4" />
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                                <p className="mt-1 whitespace-pre-wrap text-gray-800">{post.content}</p>
-                                                {post.attachmentUrls && post.attachmentUrls.length > 0 && renderAttachments(post.attachmentUrls)}
-
-                                                <div className="flex items-center space-x-6 mt-3 text-gray-500">
-                                                    <button className="flex items-center text-gray-500 hover:text-blue-500">
-                                                        <MessageCircle className="h-4 w-4 mr-1" />
-                                                        <span className="text-xs">{post.commentCount || 0}</span>
-                                                    </button>
-                                                    <button className="flex items-center text-gray-500 hover:text-green-500">
-                                                        <Repeat className="h-4 w-4 mr-1" />
-                                                        <span className="text-xs">{post.retweetCount || 0}</span>
-                                                    </button>
-                                                    <button
-                                                        className="flex items-center text-gray-500 hover:text-red-500"
-                                                        onClick={() => toggleLike(post)}
-                                                    >
-                                                        <Heart className="h-4 w-4 mr-1" />
-                                                        <span className="text-xs">{post.likeCount || 0}</span>
-                                                    </button>
-                                                    <button className="flex items-center text-gray-500 hover:text-blue-500">
-                                                        <Share className="h-4 w-4" />
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
+                                    <PostItem
+                                        key={post.id}
+                                        post={post}
+                                        getProjectColor={getProjectColor}
+                                        onDelete={() => handleDeletePost(post.id)}
+                                        onLike={() => toggleLike(post)}
+                                        isProjectView={true}
+                                    />
                                 ))
                         ) : (
                             // Show all posts in home feed
                             allPosts.map((post: Post) => (
-                                <div key={post.id} className="py-4">
-                                    <div className="flex">
-                                        <div className="mr-3">
-                                            <div className={`w-10 h-10 ${getProjectColor(post.projectId)} rounded-full flex items-center justify-center`}>
-                                                <span className="text-white font-bold">{post.projectName.charAt(0).toUpperCase()}</span>
-                                            </div>
-                                        </div>
-                                        <div className="flex-1">
-                                            <div className="flex items-center">
-                                                <span
-                                                    className="font-bold mr-1 hover:text-indigo-600 cursor-pointer"
-                                                    onClick={() => setActiveProject(post.projectId)}
-                                                >
-                                                    {post.projectName}
-                                                </span>
-                                                <span className="text-gray-500 text-sm">· {formatDate(post.createdAt)}</span>
-                                            </div>
-                                            <p className="mt-1 whitespace-pre-wrap text-gray-800">{post.content}</p>
-                                            {post.attachmentUrls && post.attachmentUrls.length > 0 && renderAttachments(post.attachmentUrls)}
-
-                                            <div className="flex items-center space-x-6 mt-3 text-gray-500">
-                                                <button className="flex items-center text-gray-500 hover:text-blue-500">
-                                                    <MessageCircle className="h-4 w-4 mr-1" />
-                                                    <span className="text-xs">{post.commentCount || 0}</span>
-                                                </button>
-                                                <button className="flex items-center text-gray-500 hover:text-green-500">
-                                                    <Repeat className="h-4 w-4 mr-1" />
-                                                    <span className="text-xs">{post.retweetCount || 0}</span>
-                                                </button>
-                                                <button
-                                                    className="flex items-center text-gray-500 hover:text-red-500"
-                                                    onClick={() => toggleLike(post)}
-                                                >
-                                                    <Heart className="h-4 w-4 mr-1" />
-                                                    <span className="text-xs">{post.likeCount || 0}</span>
-                                                </button>
-                                                <button className="flex items-center text-gray-500 hover:text-blue-500">
-                                                    <Share className="h-4 w-4" />
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
+                                <PostItem
+                                    key={post.id}
+                                    post={post}
+                                    getProjectColor={getProjectColor}
+                                    onDelete={() => handleDeletePost(post.id)}
+                                    onLike={() => toggleLike(post)}
+                                    isProjectView={false}
+                                    onProjectClick={() => setActiveProject(post.projectId)}
+                                />
                             ))
                         )}
 
