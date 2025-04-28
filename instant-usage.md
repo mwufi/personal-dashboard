@@ -187,3 +187,91 @@ db.transact(
   }),
 );
 The lookup function takes the attribute as its first argument and the unique attribute value as its second argument.
+
+## Using files (attachments, etc)
+
+Upload files
+Use db.storage.uploadFile(path, file, opts?) to upload a file.
+
+path determines where the file will be stored, and can be used with permissions to restrict access to certain files.
+file should be a File type, which will likely come from a file-type input.
+opts is optional and can be used to set the contentType and contentDisposition headers for the file.
+// use the file's current name as the path
+await db.storage.uploadFile(file.name, file);
+
+// or, give the file a custom name
+const path = `${user.id}/avatar.png`;
+await db.storage.uploadFile(path, file);
+
+// or, set the content type and content disposition
+const path = `${user.id}/orders/${orderId}.pdf`;
+await db.storage.uploadFile(path, file, {
+  contentType: 'application/pdf',
+  contentDisporition: `attachment; filename="${orderId}-confirmation.pdf"`,
+});
+
+Overwrite files
+If the path already exists in your storage directory, it will be overwritten!
+
+// Uploads a file to 'demo.png'
+await db.storage.uploadFile('demo.png', file);
+
+// Overwrites the file at 'demo.png'
+await db.storage.uploadFile('demo.png', file);
+If you don't want to overwrite files, you'll need to ensure that each file has a unique path.
+
+View files
+You can retrieve files by querying the $files namespace.
+
+// Fetch all files from earliest to latest upload
+const query = {
+  $files: {
+    $: {
+      order: { serverCreatedAt: 'asc' },
+    },
+  },
+});
+const { isLoading, error, data } = db.useQuery(query);
+console.log(data)
+{
+  "$files": [
+    {
+      "id": fileId,
+      "path": "demo.png"
+      // You can use this URL to serve the file
+      "url": "https://instant-storage.s3.amazonaws.com/...",
+      "content-type": "image/png",
+      "content-disposition": "attachment; filename=\"demo.png\"",
+    },
+    // ...
+  ]
+}
+You can use query filters and associations as you would with any other namespace to filter and sort your files.
+
+const { user } = db.useAuth();
+const query = {
+  profiles: {
+    $: {
+      where: {"$user.id": user.id}
+    },
+    $files: {},
+  },
+});
+// Defer until we've fetched the user and then query associated files
+const { isLoading, error, data } = db.useQuery(user ? query : null);
+
+Link files
+Use links to associate files with other entities in your schema.
+
+async function uploadImage(file: File) {
+  try {
+    // Create an explicit upload path
+    const path = `${user.id}/avatar`;
+    // Upload the file
+    const { data } = await db.storage.uploadFile(path, file);
+    // Link it to a profile
+    await db.transact(db.tx.profiles[profileId].link({ avatar: data.id }));
+  } catch (error) {
+    console.error('Error uploading image:', error);
+  }
+}

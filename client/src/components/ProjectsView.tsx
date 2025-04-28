@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { id } from '@instantdb/react';
 import { Project, ProjectNote } from '../types/dashboard';
 import db from '../lib/instant';
@@ -43,30 +43,44 @@ export default function ProjectsView() {
     if (isLoading) return <div className="p-8">Loading projects...</div>;
     if (error) return <div className="p-8 text-red-500">Error loading projects: {error.message}</div>;
 
-    const { projects } = data;
-    const publicProjects = projects.filter((project: Project) => project.isPublic);
-    const privateProjects = projects.filter((project: Project) => !project.isPublic);
+    const { projects = [] } = data || {};
+    const publicProjects = projects.filter((project: any) => project.isPublic);
+    const privateProjects = projects.filter((project: any) => !project.isPublic);
 
     // Get current project and its notes
     const currentProject = activeProject
-        ? projects.find((p: Project) => p.id === activeProject)
+        ? projects.find((p: any) => p.id === activeProject)
         : null;
 
     const projectNotes = currentProject?.projectNotes || [];
-    const pinnedNotes = projectNotes.filter((note: ProjectNote) => note.isPinned);
-    const unpinnedNotes = projectNotes.filter((note: ProjectNote) => !note.isPinned);
+    const pinnedNotes = projectNotes.filter((note: any) => note.isPinned);
+    const unpinnedNotes = projectNotes.filter((note: any) => !note.isPinned);
 
     // Create a new project
-    const handleCreateProject = (data: { name: string, isPublic: boolean, headerImg?: string }) => {
+    const handleCreateProject = async (data: { name: string, isPublic: boolean, headerImg?: string, headerFile?: File }) => {
         const newProjectId = id();
+
+        let headerImg = data.headerImg || '';
+
+        // Upload header image if provided
+        if (data.headerFile) {
+            try {
+                const path = `projects/${newProjectId}/header-${Date.now()}-${data.headerFile.name}`;
+                headerImg = await uploadFile(data.headerFile, path);
+            } catch (error) {
+                console.error('Error uploading header image:', error);
+            }
+        }
+
         db.transact(
             db.tx.projects[newProjectId].update({
                 name: data.name,
                 isPublic: data.isPublic,
-                headerImg: data.headerImg || '',
+                headerImg: headerImg,
                 createdAt: new Date().toISOString()
             })
         );
+
         setShowNewProjectForm(false);
         setActiveProject(newProjectId);
     };
@@ -77,14 +91,23 @@ export default function ProjectsView() {
 
         let attachmentUrls = data.attachmentUrls || [];
 
+        // Generate a note ID first so we can use it in the file path
+        const newNoteId = id();
+
         // Upload any new files
         if (data.files && data.files.length > 0) {
-            const filePromises = Array.from(data.files).map(file => uploadFile(file));
-            const uploadedUrls = await Promise.all(filePromises);
-            attachmentUrls = [...attachmentUrls, ...uploadedUrls];
+            try {
+                const filePromises = Array.from(data.files).map(file => {
+                    const path = `projects/${activeProject}/notes/${newNoteId}/${Date.now()}-${file.name}`;
+                    return uploadFile(file, path);
+                });
+                const uploadedUrls = await Promise.all(filePromises);
+                attachmentUrls = [...attachmentUrls, ...uploadedUrls];
+            } catch (error) {
+                console.error('Error uploading files:', error);
+            }
         }
 
-        const newNoteId = id();
         db.transact([
             db.tx.projectNotes[newNoteId].update({
                 content: data.content,
@@ -98,14 +121,32 @@ export default function ProjectsView() {
     };
 
     // Update an existing note
-    const handleUpdateNote = (noteId: string, data: { content: string, attachmentUrls?: string[], isPinned: boolean }) => {
+    const handleUpdateNote = async (noteId: string, data: { content: string, attachmentUrls?: string[], isPinned: boolean, files?: FileList }) => {
+        let attachmentUrls = data.attachmentUrls || [];
+
+        // Upload any new files
+        if (data.files && data.files.length > 0) {
+            try {
+                const filePromises = Array.from(data.files).map(file => {
+                    const path = `projects/${activeProject}/notes/${noteId}/${Date.now()}-${file.name}`;
+                    return uploadFile(file, path);
+                });
+                const uploadedUrls = await Promise.all(filePromises);
+                attachmentUrls = [...attachmentUrls, ...uploadedUrls];
+            } catch (error) {
+                console.error('Error uploading files:', error);
+            }
+        }
+
         db.transact(
             db.tx.projectNotes[noteId].update({
                 content: data.content,
-                attachmentUrls: data.attachmentUrls || [],
+                attachmentUrls: attachmentUrls,
                 isPinned: data.isPinned
             })
         );
+
+        setShowNewNoteForm(false);
         setEditingNote(null);
     };
 
@@ -115,10 +156,13 @@ export default function ProjectsView() {
     };
 
     // Toggle pin status of a note
-    const togglePinStatus = (note: ProjectNote) => {
+    const togglePinStatus = (note: any) => {
         db.transact(
             db.tx.projectNotes[note.id].update({
-                isPinned: !note.isPinned
+                isPinned: !note.isPinned,
+                // Preserve other fields to avoid losing them
+                content: note.content,
+                attachmentUrls: note.attachmentUrls || []
             })
         );
     };
@@ -176,8 +220,8 @@ export default function ProjectsView() {
         if (!projectId) return;
 
         // First get all notes for this project
-        const project = projects.find((p: Project) => p.id === projectId);
-        const projectNoteIds = project?.projectNotes?.map(note => note.id) || [];
+        const project = projects.find((p: any) => p.id === projectId);
+        const projectNoteIds = project?.projectNotes?.map((note: any) => note.id) || [];
 
         // Create transactions to delete all notes first
         const noteDeleteTransactions = projectNoteIds.map(noteId =>
@@ -197,19 +241,64 @@ export default function ProjectsView() {
     };
 
     // Update a project
-    const handleUpdateProject = (data: { name: string, isPublic: boolean, headerImg?: string }) => {
+    const handleUpdateProject = async (data: { name: string, isPublic: boolean, headerImg?: string, headerFile?: File }) => {
         if (!activeProject) return;
+
+        let headerImg = data.headerImg || '';
+
+        // Upload header image if provided
+        if (data.headerFile) {
+            try {
+                const path = `projects/${activeProject}/header-${Date.now()}-${data.headerFile.name}`;
+                headerImg = await uploadFile(data.headerFile, path);
+            } catch (error) {
+                console.error('Error uploading header image:', error);
+            }
+        }
 
         db.transact(
             db.tx.projects[activeProject].update({
                 name: data.name,
                 isPublic: data.isPublic,
-                headerImg: data.headerImg || ''
+                headerImg: headerImg
             })
         );
 
         setShowEditProjectForm(false);
     };
+
+    // File input references
+    const projectHeaderFileRef = useRef<HTMLInputElement>(null);
+    const editProjectHeaderFileRef = useRef<HTMLInputElement>(null);
+
+    // Add file input change handlers
+    useEffect(() => {
+        const projectHeaderFile = document.getElementById('project-header-file') as HTMLInputElement;
+        const headerFileNameDiv = document.getElementById('header-file-name');
+
+        const editProjectHeaderFile = document.getElementById('edit-project-header-file') as HTMLInputElement;
+        const editHeaderFileNameDiv = document.getElementById('edit-header-file-name');
+
+        const handleProjectHeaderFileChange = () => {
+            if (projectHeaderFile?.files?.length && headerFileNameDiv) {
+                headerFileNameDiv.textContent = `Selected: ${projectHeaderFile.files[0].name}`;
+            }
+        };
+
+        const handleEditProjectHeaderFileChange = () => {
+            if (editProjectHeaderFile?.files?.length && editHeaderFileNameDiv) {
+                editHeaderFileNameDiv.textContent = `Selected: ${editProjectHeaderFile.files[0].name}`;
+            }
+        };
+
+        projectHeaderFile?.addEventListener('change', handleProjectHeaderFileChange);
+        editProjectHeaderFile?.addEventListener('change', handleEditProjectHeaderFileChange);
+
+        return () => {
+            projectHeaderFile?.removeEventListener('change', handleProjectHeaderFileChange);
+            editProjectHeaderFile?.removeEventListener('change', handleEditProjectHeaderFileChange);
+        };
+    }, [showNewProjectForm, showEditProjectForm]);
 
     return (
         <div className="grid grid-cols-[250px_1fr] h-full">
@@ -234,6 +323,32 @@ export default function ProjectsView() {
                             className="w-full p-2 mb-2 text-sm bg-background rounded border"
                             id="project-name"
                         />
+                        <div className="mb-2">
+                            <label htmlFor="project-header-img" className="text-xs block mb-1">Header Image (optional)</label>
+                            <div className="flex gap-2">
+                                <input
+                                    type="text"
+                                    placeholder="Image URL"
+                                    className="flex-1 p-2 text-sm bg-background rounded border"
+                                    id="project-header-img"
+                                />
+                                <span className="text-xs self-center">OR</span>
+                                <button
+                                    onClick={() => projectHeaderFileRef.current?.click()}
+                                    className="px-2 py-1 text-xs bg-gray-100 rounded hover:bg-gray-200"
+                                >
+                                    Upload
+                                </button>
+                                <input
+                                    type="file"
+                                    accept="image/*"
+                                    className="hidden"
+                                    ref={projectHeaderFileRef}
+                                    id="project-header-file"
+                                />
+                            </div>
+                            <div id="header-file-name" className="text-xs mt-1 text-muted-foreground"></div>
+                        </div>
                         <div className="flex items-center mb-2">
                             <input
                                 type="checkbox"
@@ -250,11 +365,16 @@ export default function ProjectsView() {
                                 Cancel
                             </button>
                             <button
-                                onClick={() => {
+                                onClick={async () => {
                                     const nameInput = document.getElementById('project-name') as HTMLInputElement;
+                                    const headerImgInput = document.getElementById('project-header-img') as HTMLInputElement;
+                                    const headerFileInput = document.getElementById('project-header-file') as HTMLInputElement;
                                     const isPublicInput = document.getElementById('is-public') as HTMLInputElement;
-                                    handleCreateProject({
+
+                                    await handleCreateProject({
                                         name: nameInput.value,
+                                        headerImg: headerImgInput.value,
+                                        headerFile: headerFileInput.files?.[0],
                                         isPublic: isPublicInput.checked
                                     });
                                 }}
@@ -272,7 +392,7 @@ export default function ProjectsView() {
                             <UnlockIcon className="h-3 w-3 mr-1" /> Public Projects
                         </h3>
                         <ul className="space-y-1">
-                            {publicProjects.map((project: Project) => (
+                            {publicProjects.map((project: any) => (
                                 <li key={project.id}>
                                     <button
                                         className={`flex items-center w-full p-2 text-sm rounded ${activeProject === project.id ? 'bg-accent text-accent-foreground' : 'hover:bg-accent/50'}`}
@@ -293,7 +413,7 @@ export default function ProjectsView() {
                             <LockIcon className="h-3 w-3 mr-1" /> Private Projects
                         </h3>
                         <ul className="space-y-1">
-                            {privateProjects.map((project: Project) => (
+                            {privateProjects.map((project: any) => (
                                 <li key={project.id}>
                                     <button
                                         className={`flex items-center w-full p-2 text-sm rounded ${activeProject === project.id ? 'bg-accent text-accent-foreground' : 'hover:bg-accent/50'}`}
@@ -367,14 +487,45 @@ export default function ProjectsView() {
                                         />
                                     </div>
                                     <div className="mb-3">
-                                        <label htmlFor="edit-project-header" className="text-sm block mb-1">Header Image URL (optional)</label>
-                                        <input
-                                            type="text"
-                                            id="edit-project-header"
-                                            className="w-full p-2 text-sm bg-background rounded border"
-                                            defaultValue={currentProject?.headerImg || ''}
-                                            placeholder="https://example.com/image.jpg"
-                                        />
+                                        <label htmlFor="edit-project-header" className="text-sm block mb-1">Header Image</label>
+                                        <div className="flex gap-2 mb-2">
+                                            <input
+                                                type="text"
+                                                id="edit-project-header"
+                                                className="flex-1 p-2 text-sm bg-background rounded border"
+                                                defaultValue={currentProject?.headerImg || ''}
+                                                placeholder="Image URL"
+                                            />
+                                            <span className="text-xs self-center">OR</span>
+                                            <button
+                                                onClick={() => editProjectHeaderFileRef.current?.click()}
+                                                className="px-2 py-1 text-xs bg-gray-100 rounded hover:bg-gray-200"
+                                            >
+                                                Upload
+                                            </button>
+                                            <input
+                                                type="file"
+                                                accept="image/*"
+                                                className="hidden"
+                                                ref={editProjectHeaderFileRef}
+                                                id="edit-project-header-file"
+                                            />
+                                        </div>
+                                        <div id="edit-header-file-name" className="text-xs mt-1 text-muted-foreground"></div>
+                                        {currentProject?.headerImg && (
+                                            <div className="mt-2">
+                                                <div className="relative h-24 w-full rounded overflow-hidden">
+                                                    <img
+                                                        src={currentProject.headerImg}
+                                                        alt="Current header"
+                                                        className="h-full w-full object-cover"
+                                                    />
+                                                    <div className="absolute inset-0 bg-black bg-opacity-40 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
+                                                        <span className="text-white text-xs">Current header image</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                     <div className="flex items-center mb-3">
                                         <input
@@ -393,14 +544,16 @@ export default function ProjectsView() {
                                             Cancel
                                         </button>
                                         <button
-                                            onClick={() => {
+                                            onClick={async () => {
                                                 const nameInput = document.getElementById('edit-project-name') as HTMLInputElement;
                                                 const headerInput = document.getElementById('edit-project-header') as HTMLInputElement;
+                                                const headerFileInput = document.getElementById('edit-project-header-file') as HTMLInputElement;
                                                 const isPublicInput = document.getElementById('edit-is-public') as HTMLInputElement;
 
-                                                handleUpdateProject({
+                                                await handleUpdateProject({
                                                     name: nameInput.value,
                                                     headerImg: headerInput.value,
+                                                    headerFile: headerFileInput.files?.[0],
                                                     isPublic: isPublicInput.checked
                                                 });
                                             }}
@@ -459,7 +612,7 @@ export default function ProjectsView() {
                                         />
                                     </div>
 
-                                    {editingNote?.attachmentUrls?.length > 0 && (
+                                    {editingNote?.attachmentUrls && editingNote.attachmentUrls.length > 0 && (
                                         <div className="mb-3">
                                             <label className="text-sm block mb-1">Existing Attachments</label>
                                             {renderAttachments(editingNote.attachmentUrls)}
@@ -519,7 +672,7 @@ export default function ProjectsView() {
                                         <Pin className="h-3 w-3 mr-1" /> Pinned Notes
                                     </h3>
                                     <div className="grid grid-cols-1 gap-3">
-                                        {pinnedNotes.map((note: ProjectNote) => (
+                                        {pinnedNotes.map((note: any) => (
                                             <div key={note.id} className="p-4 bg-amber-50 rounded-md shadow-sm border border-amber-200">
                                                 <div className="flex justify-between items-start mb-2">
                                                     <div className="flex-1 whitespace-pre-wrap">{note.content}</div>
@@ -565,7 +718,7 @@ export default function ProjectsView() {
                                         <PinOff className="h-3 w-3 mr-1" /> Other Notes
                                     </h3>
                                     <div className="grid grid-cols-1 gap-3">
-                                        {unpinnedNotes.map((note: ProjectNote) => (
+                                        {unpinnedNotes.map((note: any) => (
                                             <div key={note.id} className="p-4 bg-card rounded-md shadow-sm border">
                                                 <div className="flex justify-between items-start mb-2">
                                                     <div className="flex-1 whitespace-pre-wrap">{note.content}</div>
