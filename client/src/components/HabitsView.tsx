@@ -302,16 +302,6 @@ export default function HabitsView() {
                 </div>
             )}
 
-            {!habitFormVisible && !completionFormVisible && habits.length > 0 && (
-                <Button
-                    variant="outline"
-                    onClick={() => setCompletionFormVisible(true)}
-                    className="mb-4"
-                >
-                    Record Completion
-                </Button>
-            )}
-
             <div className="space-y-6">
                 {habits.map((habit) => (
                     <Card key={habit.id}>
