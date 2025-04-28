@@ -10,10 +10,6 @@ import db from "../lib/instant";
 import { MoreHorizontal, Edit, Trash2 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
 
-interface HabitsData extends QueryParams {
-    habits?: Habit[];
-    habitCompletions?: HabitCompletion[];
-}
 
 export default function HabitsView() {
     const [habitFormVisible, setHabitFormVisible] = useState(false);
@@ -31,15 +27,16 @@ export default function HabitsView() {
     });
 
     // Query to get habits and completions
-    const { isLoading, error, data } = db.useQuery<HabitsData>({
-        habits: {},
-        habitCompletions: {}
+    const { isLoading, error, data } = db.useQuery({
+        habits: {
+            completions: {}
+        },
     });
 
     if (isLoading) return <div className="p-4">Loading...</div>;
     if (error) return <div className="p-4 text-red-500">Error: {error.message}</div>;
 
-    const { habits = [], habitCompletions = [] } = data;
+    const { habits = [] } = data;
 
     // Generate calendar days for the current month
     const today = new Date();
@@ -57,8 +54,10 @@ export default function HabitsView() {
     // Check if a habit was completed on a specific day
     const isHabitCompletedOnDay = (habitId: string, day: number) => {
         const dateString = formatDateString(currentYear, currentMonth, day);
-        return habitCompletions.some(
-            (completion) => completion.habitId === habitId && completion.date === dateString && completion.completed
+        return habits.some(
+            (habit) => habit.id === habitId && habit.completions.some(
+                (completion) => completion.date === dateString && completion.completed
+            )
         );
     };
 
@@ -94,12 +93,6 @@ export default function HabitsView() {
         if (window.confirm("Are you sure you want to delete this habit and all its completions?")) {
             // Delete the habit
             db.transact(db.tx.habits[habitId].delete());
-
-            // Delete all completions for this habit
-            const habitCompletionsToDelete = habitCompletions.filter(c => c.habitId === habitId);
-            habitCompletionsToDelete.forEach(completion => {
-                db.transact(db.tx.habitCompletions[completion.id].delete());
-            });
         }
     };
 
@@ -118,11 +111,12 @@ export default function HabitsView() {
         const completionId = id();
         db.transact(
             db.tx.habitCompletions[completionId].update({
-                habitId: completionData.habitId,
                 date: completionData.date,
                 completed: completionData.completed,
                 notes: completionData.notes,
                 createdAt: new Date().toISOString()
+            }).link({
+                habit: completionData.habitId
             })
         );
 
@@ -138,27 +132,28 @@ export default function HabitsView() {
     // Handler for toggling a habit completion
     const handleToggleHabit = (habitId: string, day: number) => {
         const dateString = formatDateString(currentYear, currentMonth, day);
-        const existingCompletion = habitCompletions.find(
-            (completion) => completion.habitId === habitId && completion.date === dateString
+        const habit = habits.find(habit => habit.id === habitId);
+        const existingCompletion = habit?.completions?.find(
+            completion => completion.date === dateString && completion.completed
         );
 
         if (existingCompletion) {
             // Toggle existing completion
+            console.log("toggling", existingCompletion, "to", !existingCompletion.completed);
             db.transact(
-                db.tx.habitCompletions[existingCompletion.id].update({
-                    completed: !existingCompletion.completed
-                })
+                db.tx.habitCompletions[existingCompletion.id].delete()
             );
         } else {
             // Create new completion
             const completionId = id();
             db.transact(
                 db.tx.habitCompletions[completionId].update({
-                    habitId,
                     date: dateString,
                     completed: true,
                     notes: "",
                     createdAt: new Date().toISOString()
+                }).link({
+                    habit: habitId
                 })
             );
         }
@@ -393,9 +388,8 @@ export default function HabitsView() {
 
                                     while (true) {
                                         const dateStr = currentDate.toISOString().split('T')[0];
-                                        const completed = habitCompletions.some(
-                                            completion => completion.habitId === habit.id &&
-                                                completion.date === dateStr &&
+                                        const completed = habit.completions.some(
+                                            completion => completion.date === dateStr &&
                                                 completion.completed
                                         );
 
@@ -415,10 +409,9 @@ export default function HabitsView() {
 
                             {/* Completion rate */}
                             {(() => {
-                                const thisMonthCompletions = habitCompletions.filter(completion => {
+                                const thisMonthCompletions = habit.completions.filter(completion => {
                                     const completionDate = new Date(completion.date);
-                                    return completion.habitId === habit.id &&
-                                        completionDate.getMonth() === currentMonth &&
+                                    return completionDate.getMonth() === currentMonth &&
                                         completionDate.getFullYear() === currentYear;
                                 });
 
