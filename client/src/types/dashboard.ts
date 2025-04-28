@@ -12,6 +12,56 @@ export interface Item {
     [key: string]: any;
 }
 
+// Personal Dashboard Types
+export interface Book {
+    id: string;
+    title: string;
+    author: string;
+    status: 'to-read' | 'in-progress' | 'completed';
+    startDate?: string;
+    finishDate?: string;
+    rating?: number;
+    notes?: string;
+    coverUrl?: string;
+    createdAt: string;
+}
+
+export interface WaterIntake {
+    id: string;
+    date: string;
+    amount: number; // in ml
+    time: string;
+    createdAt: string;
+}
+
+export interface BlogPost {
+    id: string;
+    title: string;
+    content: string;
+    tags?: string[];
+    status: 'draft' | 'published';
+    lastEdited: string;
+    publishedDate?: string;
+    createdAt: string;
+}
+
+export interface Habit {
+    id: string;
+    name: string;
+    description?: string;
+    createdAt: string;
+    completions?: HabitCompletion[];
+}
+
+export interface HabitCompletion {
+    id: string;
+    habitId: string;
+    date: string;
+    completed: boolean;
+    notes?: string;
+    createdAt: string;
+}
+
 // Component Props Interfaces
 export interface CollectionListProps {
     collections: Collection[];
@@ -39,4 +89,20 @@ export interface FieldTemplate {
     key: string;
     label: string;
     type: string;
+}
+
+// Sidebar Types
+export interface SidebarProps {
+    activeView: string;
+    onSelectView: (view: string) => void;
+}
+
+// Dashboard View Props
+export interface DashboardViewProps {
+    activeView: string;
+}
+
+// Fix for InstantDB query type constraint
+export interface QueryParams {
+    [key: string]: any;
 } 
