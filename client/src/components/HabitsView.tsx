@@ -396,7 +396,6 @@ export default function HabitsView() {
                                     ) : null;
                                 })()}
                             </div>
-
                             {/* Completion rate */}
                             {(() => {
                                 const thisMonthCompletions = habit.completions.filter(completion => {
@@ -406,13 +405,20 @@ export default function HabitsView() {
                                 });
 
                                 const completed = thisMonthCompletions.filter(completion => completion.completed).length;
-                                const total = thisMonthCompletions.length;
+                                const daysInCurrentMonth = daysInMonth;
+                                const completionRate = Math.round((completed / daysInCurrentMonth) * 100);
 
-                                return total > 0 ? (
-                                    <div className="text-sm text-muted-foreground">
-                                        {Math.round((completed / total) * 100)}% completion rate this month
+                                return (
+                                    <div className="relative flex items-center group">
+                                        <div className="text-sm text-muted-foreground">
+                                            {completionRate}% completion rate
+                                        </div>
+                                        <div className="absolute bottom-full mb-2 p-2 bg-popover text-popover-foreground rounded-md shadow-md 
+                                            opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-opacity w-48 text-xs">
+                                            Based on {completed} completed days out of {daysInCurrentMonth} days in {getMonthName(currentMonth)}
+                                        </div>
                                     </div>
-                                ) : null;
+                                );
                             })()}
                         </CardFooter>
                     </Card>
