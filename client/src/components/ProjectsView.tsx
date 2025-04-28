@@ -17,6 +17,10 @@ export default function ProjectsView() {
     const [editingNote, setEditingNote] = useState<ProjectNote | null>(null);
     const [showEditProjectForm, setShowEditProjectForm] = useState(false);
 
+    // File input references - moved to the top with other hooks
+    const projectHeaderFileRef = useRef<HTMLInputElement>(null);
+    const editProjectHeaderFileRef = useRef<HTMLInputElement>(null);
+
     // Query projects and their notes
     const { isLoading, error, data } = db.useQuery({
         projects: {
@@ -39,6 +43,35 @@ export default function ProjectsView() {
             setSearchParams({});
         }
     }, [activeProject, setSearchParams]);
+
+    // Add file input change handlers
+    useEffect(() => {
+        const projectHeaderFile = document.getElementById('project-header-file') as HTMLInputElement;
+        const headerFileNameDiv = document.getElementById('header-file-name');
+
+        const editProjectHeaderFile = document.getElementById('edit-project-header-file') as HTMLInputElement;
+        const editHeaderFileNameDiv = document.getElementById('edit-header-file-name');
+
+        const handleProjectHeaderFileChange = () => {
+            if (projectHeaderFile?.files?.length && headerFileNameDiv) {
+                headerFileNameDiv.textContent = `Selected: ${projectHeaderFile.files[0].name}`;
+            }
+        };
+
+        const handleEditProjectHeaderFileChange = () => {
+            if (editProjectHeaderFile?.files?.length && editHeaderFileNameDiv) {
+                editHeaderFileNameDiv.textContent = `Selected: ${editProjectHeaderFile.files[0].name}`;
+            }
+        };
+
+        projectHeaderFile?.addEventListener('change', handleProjectHeaderFileChange);
+        editProjectHeaderFile?.addEventListener('change', handleEditProjectHeaderFileChange);
+
+        return () => {
+            projectHeaderFile?.removeEventListener('change', handleProjectHeaderFileChange);
+            editProjectHeaderFile?.removeEventListener('change', handleEditProjectHeaderFileChange);
+        };
+    }, [showNewProjectForm, showEditProjectForm]);
 
     if (isLoading) return <div className="p-8">Loading projects...</div>;
     if (error) return <div className="p-8 text-red-500">Error loading projects: {error.message}</div>;
@@ -266,39 +299,6 @@ export default function ProjectsView() {
 
         setShowEditProjectForm(false);
     };
-
-    // File input references
-    const projectHeaderFileRef = useRef<HTMLInputElement>(null);
-    const editProjectHeaderFileRef = useRef<HTMLInputElement>(null);
-
-    // Add file input change handlers
-    useEffect(() => {
-        const projectHeaderFile = document.getElementById('project-header-file') as HTMLInputElement;
-        const headerFileNameDiv = document.getElementById('header-file-name');
-
-        const editProjectHeaderFile = document.getElementById('edit-project-header-file') as HTMLInputElement;
-        const editHeaderFileNameDiv = document.getElementById('edit-header-file-name');
-
-        const handleProjectHeaderFileChange = () => {
-            if (projectHeaderFile?.files?.length && headerFileNameDiv) {
-                headerFileNameDiv.textContent = `Selected: ${projectHeaderFile.files[0].name}`;
-            }
-        };
-
-        const handleEditProjectHeaderFileChange = () => {
-            if (editProjectHeaderFile?.files?.length && editHeaderFileNameDiv) {
-                editHeaderFileNameDiv.textContent = `Selected: ${editProjectHeaderFile.files[0].name}`;
-            }
-        };
-
-        projectHeaderFile?.addEventListener('change', handleProjectHeaderFileChange);
-        editProjectHeaderFile?.addEventListener('change', handleEditProjectHeaderFileChange);
-
-        return () => {
-            projectHeaderFile?.removeEventListener('change', handleProjectHeaderFileChange);
-            editProjectHeaderFile?.removeEventListener('change', handleEditProjectHeaderFileChange);
-        };
-    }, [showNewProjectForm, showEditProjectForm]);
 
     return (
         <div className="grid grid-cols-[250px_1fr] h-full">
