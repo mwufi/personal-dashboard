@@ -2,9 +2,18 @@ import { useState, useEffect, useRef } from 'react';
 import { id } from '@instantdb/react';
 import { Project, ProjectNote } from '../types/dashboard';
 import db from '../lib/instant';
-import { FolderIcon, LockIcon, UnlockIcon, PlusIcon, Pin, PinOff, Trash2 } from 'lucide-react';
+import { MessageCircle, Heart, Repeat, Share, MoreHorizontal, PlusIcon, Trash2, ImageIcon, FolderIcon, UnlockIcon, LockIcon, Pin, PinOff, Music, Play, Pencil, Archive, X } from 'lucide-react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { uploadFile, getFileMetadata } from '../lib/fileService';
+
+// Define interfaces for post data
+interface Post extends ProjectNote {
+    projectId: string;
+    projectName: string;
+    likeCount?: number;
+    commentCount?: number;
+    retweetCount?: number;
+}
 
 export default function ProjectsView() {
     const [searchParams, setSearchParams] = useSearchParams();
@@ -12,14 +21,14 @@ export default function ProjectsView() {
     const projectId = searchParams.get('id');
 
     const [activeProject, setActiveProject] = useState<string | null>(projectId);
-    const [showNewProjectForm, setShowNewProjectForm] = useState(false);
-    const [showNewNoteForm, setShowNewNoteForm] = useState(false);
-    const [editingNote, setEditingNote] = useState<ProjectNote | null>(null);
-    const [showEditProjectForm, setShowEditProjectForm] = useState(false);
+    const [showNewForm, setShowNewForm] = useState(false);
+    const [editingPost, setEditingPost] = useState<ProjectNote | null>(null);
+    const [showProjectForm, setShowProjectForm] = useState(false);
+    const [editingProject, setEditingProject] = useState<string | null>(null);
 
-    // File input references - moved to the top with other hooks
-    const projectHeaderFileRef = useRef<HTMLInputElement>(null);
-    const editProjectHeaderFileRef = useRef<HTMLInputElement>(null);
+    // File input references
+    const imageFileRef = useRef<HTMLInputElement>(null);
+    const projectImageRef = useRef<HTMLInputElement>(null);
 
     // Query projects and their notes
     const { isLoading, error, data } = db.useQuery({
@@ -46,92 +55,59 @@ export default function ProjectsView() {
 
     // Add file input change handlers
     useEffect(() => {
-        const projectHeaderFile = document.getElementById('project-header-file') as HTMLInputElement;
-        const headerFileNameDiv = document.getElementById('header-file-name');
+        const imageFile = document.getElementById('image-file') as HTMLInputElement;
+        const imageFileNameDiv = document.getElementById('image-file-name');
 
-        const editProjectHeaderFile = document.getElementById('edit-project-header-file') as HTMLInputElement;
-        const editHeaderFileNameDiv = document.getElementById('edit-header-file-name');
-
-        const handleProjectHeaderFileChange = () => {
-            if (projectHeaderFile?.files?.length && headerFileNameDiv) {
-                headerFileNameDiv.textContent = `Selected: ${projectHeaderFile.files[0].name}`;
+        const handleImageFileChange = () => {
+            if (imageFile?.files?.length && imageFileNameDiv) {
+                imageFileNameDiv.textContent = `Selected: ${imageFile.files[0].name}`;
             }
         };
 
-        const handleEditProjectHeaderFileChange = () => {
-            if (editProjectHeaderFile?.files?.length && editHeaderFileNameDiv) {
-                editHeaderFileNameDiv.textContent = `Selected: ${editProjectHeaderFile.files[0].name}`;
-            }
-        };
-
-        projectHeaderFile?.addEventListener('change', handleProjectHeaderFileChange);
-        editProjectHeaderFile?.addEventListener('change', handleEditProjectHeaderFileChange);
+        imageFile?.addEventListener('change', handleImageFileChange);
 
         return () => {
-            projectHeaderFile?.removeEventListener('change', handleProjectHeaderFileChange);
-            editProjectHeaderFile?.removeEventListener('change', handleEditProjectHeaderFileChange);
+            imageFile?.removeEventListener('change', handleImageFileChange);
         };
-    }, [showNewProjectForm, showEditProjectForm]);
+    }, [showNewForm]);
 
-    if (isLoading) return <div className="p-8">Loading projects...</div>;
-    if (error) return <div className="p-8 text-red-500">Error loading projects: {error.message}</div>;
+    if (isLoading) return <div className="flex items-center justify-center h-screen"><div className="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full"></div></div>;
+    if (error) return <div className="p-4 text-red-500">Error loading feed: {error.message}</div>;
 
     const { projects = [] } = data || {};
-    const publicProjects = projects.filter((project: any) => project.isPublic);
-    const privateProjects = projects.filter((project: any) => !project.isPublic);
+    const allPosts: Post[] = [];
 
-    // Get current project and its notes
-    const currentProject = activeProject
-        ? projects.find((p: any) => p.id === activeProject)
-        : null;
+    // Collect all posts (notes) from all projects
+    projects.forEach((project: any) => {
+        const projectPosts = project.projectNotes || [];
+        projectPosts.forEach((note: any) => {
+            allPosts.push({
+                ...note,
+                projectId: project.id,
+                projectName: project.name
+            });
+        });
+    });
 
-    const projectNotes = currentProject?.projectNotes || [];
-    const pinnedNotes = projectNotes.filter((note: any) => note.isPinned);
-    const unpinnedNotes = projectNotes.filter((note: any) => !note.isPinned);
+    // Sort by creation date, newest first
+    allPosts.sort((a, b) => {
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
 
-    // Create a new project
-    const handleCreateProject = async (data: { name: string, isPublic: boolean, headerImg?: string, headerFile?: File }) => {
-        const newProjectId = id();
-
-        let headerImg = data.headerImg || '';
-
-        // Upload header image if provided
-        if (data.headerFile) {
-            try {
-                const path = `projects/${newProjectId}/header-${Date.now()}-${data.headerFile.name}`;
-                headerImg = await uploadFile(data.headerFile, path);
-            } catch (error) {
-                console.error('Error uploading header image:', error);
-            }
-        }
-
-        db.transact(
-            db.tx.projects[newProjectId].update({
-                name: data.name,
-                isPublic: data.isPublic,
-                headerImg: headerImg,
-                createdAt: new Date().toISOString()
-            })
-        );
-
-        setShowNewProjectForm(false);
-        setActiveProject(newProjectId);
-    };
-
-    // Create a new note with possible file attachments
-    const handleCreateNote = async (data: { content: string, attachmentUrls?: string[], isPinned: boolean, files?: FileList }) => {
+    // Create a new post
+    const handleCreatePost = async (data: { content: string, files?: FileList }) => {
         if (!activeProject) return;
 
-        let attachmentUrls = data.attachmentUrls || [];
+        let attachmentUrls: string[] = [];
 
-        // Generate a note ID first so we can use it in the file path
-        const newNoteId = id();
+        // Generate ID for the new post
+        const newPostId = id();
 
         // Upload any new files
         if (data.files && data.files.length > 0) {
             try {
                 const filePromises = Array.from(data.files).map(file => {
-                    const path = `projects/${activeProject}/notes/${newNoteId}/${Date.now()}-${file.name}`;
+                    const path = `posts/${newPostId}/${Date.now()}-${file.name}`;
                     return uploadFile(file, path);
                 });
                 const uploadedUrls = await Promise.all(filePromises);
@@ -142,110 +118,47 @@ export default function ProjectsView() {
         }
 
         db.transact([
-            db.tx.projectNotes[newNoteId].update({
+            db.tx.projectNotes[newPostId].update({
                 content: data.content,
                 attachmentUrls: attachmentUrls,
-                isPinned: data.isPinned,
-                createdAt: new Date().toISOString()
+                isPinned: false,
+                createdAt: new Date().toISOString(),
+                likeCount: 0,
+                retweetCount: 0,
+                commentCount: 0
             }),
-            db.tx.projects[activeProject].link({ projectNotes: newNoteId })
+            db.tx.projects[activeProject].link({ projectNotes: newPostId })
         ]);
-        setShowNewNoteForm(false);
+        setShowNewForm(false);
     };
 
-    // Update an existing note
-    const handleUpdateNote = async (noteId: string, data: { content: string, attachmentUrls?: string[], isPinned: boolean, files?: FileList }) => {
-        let attachmentUrls = data.attachmentUrls || [];
-
-        // Upload any new files
-        if (data.files && data.files.length > 0) {
-            try {
-                const filePromises = Array.from(data.files).map(file => {
-                    const path = `projects/${activeProject}/notes/${noteId}/${Date.now()}-${file.name}`;
-                    return uploadFile(file, path);
-                });
-                const uploadedUrls = await Promise.all(filePromises);
-                attachmentUrls = [...attachmentUrls, ...uploadedUrls];
-            } catch (error) {
-                console.error('Error uploading files:', error);
-            }
-        }
+    // Create a new project
+    const handleCreateProject = async (data: { name: string, isPublic: boolean }) => {
+        const newProjectId = id();
 
         db.transact(
-            db.tx.projectNotes[noteId].update({
-                content: data.content,
-                attachmentUrls: attachmentUrls,
-                isPinned: data.isPinned
+            db.tx.projects[newProjectId].update({
+                name: data.name,
+                isPublic: data.isPublic,
+                createdAt: new Date().toISOString()
             })
         );
 
-        setShowNewNoteForm(false);
-        setEditingNote(null);
+        setShowProjectForm(false);
+        setActiveProject(newProjectId);
     };
 
-    // Delete a note
-    const handleDeleteNote = (noteId: string) => {
-        db.transact(db.tx.projectNotes[noteId].delete());
-    };
-
-    // Toggle pin status of a note
-    const togglePinStatus = (note: any) => {
+    // Update an existing project
+    const handleUpdateProject = async (projectId: string, data: { name: string, isPublic: boolean }) => {
         db.transact(
-            db.tx.projectNotes[note.id].update({
-                isPinned: !note.isPinned,
-                // Preserve other fields to avoid losing them
-                content: note.content,
-                attachmentUrls: note.attachmentUrls || []
+            db.tx.projects[projectId].update({
+                name: data.name,
+                isPublic: data.isPublic
             })
         );
-    };
 
-    // Update setActiveProject to also update the URL
-    const handleSelectProject = (id: string) => {
-        setActiveProject(id);
-    };
-
-    // Render file attachments for a note
-    const renderAttachments = (attachmentUrls: string[] = []) => {
-        if (!attachmentUrls.length) return null;
-
-        return (
-            <div className="mt-2 pt-2 border-t">
-                <h4 className="text-xs text-muted-foreground mb-1">Attachments:</h4>
-                <div className="flex flex-wrap gap-2">
-                    {attachmentUrls.map((url, index) => {
-                        const { name } = getFileMetadata(url);
-                        const isImage = url.match(/\.(jpeg|jpg|gif|png)$/i);
-
-                        return (
-                            <a
-                                key={index}
-                                href={url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="flex items-center text-xs bg-gray-100 rounded px-2 py-1 hover:bg-gray-200"
-                            >
-                                {isImage ? (
-                                    <span className="mr-1">🖼️</span>
-                                ) : (
-                                    <span className="mr-1">📎</span>
-                                )}
-                                <span className="truncate max-w-[100px]">{name}</span>
-                            </a>
-                        );
-                    })}
-                </div>
-            </div>
-        );
-    };
-
-    // Format date for display
-    const formatDate = (dateString: string) => {
-        try {
-            return new Date(dateString).toLocaleString();
-        } catch (e) {
-            return dateString;
-        }
+        setShowProjectForm(false);
+        setEditingProject(null);
     };
 
     // Delete a project and all its notes
@@ -273,505 +186,531 @@ export default function ProjectsView() {
         }
     };
 
-    // Update a project
-    const handleUpdateProject = async (data: { name: string, isPublic: boolean, headerImg?: string, headerFile?: File }) => {
-        if (!activeProject) return;
-
-        let headerImg = data.headerImg || '';
-
-        // Upload header image if provided
-        if (data.headerFile) {
-            try {
-                const path = `projects/${activeProject}/header-${Date.now()}-${data.headerFile.name}`;
-                headerImg = await uploadFile(data.headerFile, path);
-            } catch (error) {
-                console.error('Error uploading header image:', error);
-            }
-        }
-
-        db.transact(
-            db.tx.projects[activeProject].update({
-                name: data.name,
-                isPublic: data.isPublic,
-                headerImg: headerImg
-            })
-        );
-
-        setShowEditProjectForm(false);
+    // Delete a post
+    const handleDeletePost = (noteId: string) => {
+        db.transact(db.tx.projectNotes[noteId].delete());
     };
 
+    // Format date for display
+    const formatDate = (dateString: string) => {
+        try {
+            const date = new Date(dateString);
+            const now = new Date();
+            const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+
+            if (diffInSeconds < 60) {
+                return `${diffInSeconds}s`;
+            } else if (diffInSeconds < 3600) {
+                return `${Math.floor(diffInSeconds / 60)}m`;
+            } else if (diffInSeconds < 86400) {
+                return `${Math.floor(diffInSeconds / 3600)}h`;
+            } else if (diffInSeconds < 604800) {
+                return `${Math.floor(diffInSeconds / 86400)}d`;
+            } else {
+                return `${date.toLocaleDateString()}`;
+            }
+        } catch (e) {
+            return dateString;
+        }
+    };
+
+    // Toggle like on a post
+    const toggleLike = (post: any) => {
+        const currentLikes = post.likeCount || 0;
+        const newLikes = currentLikes + 1; // In a real app, you'd toggle on/off
+
+        db.transact(
+            db.tx.projectNotes[post.id].update({
+                likeCount: newLikes,
+                // Preserve other fields
+                content: post.content,
+                attachmentUrls: post.attachmentUrls || [],
+                isPinned: post.isPinned || false,
+                retweetCount: post.retweetCount || 0,
+                commentCount: post.commentCount || 0
+            })
+        );
+    };
+
+    // Render image attachments for a post
+    const renderAttachments = (attachmentUrls: string[] = []) => {
+        if (!attachmentUrls.length) return null;
+
+        const isImage = (url: string) => url.match(/\.(jpeg|jpg|gif|png)$/i);
+        const images = attachmentUrls.filter(url => isImage(url));
+
+        if (images.length === 0) return null;
+
+        return (
+            <div className="mt-2 rounded-xl overflow-hidden border border-gray-200">
+                <img
+                    src={images[0]}
+                    alt="Attached media"
+                    className="w-full h-auto max-h-96 object-cover"
+                />
+            </div>
+        );
+    };
+
+    // Create a soft pastel color for project avatar
+    const getProjectColor = (projectId: string) => {
+        const colors = [
+            'bg-[#8da0cb]', 'bg-[#fc8d62]', 'bg-[#66c2a5]', 'bg-[#e78ac3]',
+            'bg-[#a6d854]', 'bg-[#ffd92f]', 'bg-[#e5c494]', 'bg-[#b3b3b3]'
+        ];
+        // Use the projectId to deterministically choose a color
+        const charSum = projectId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+        return colors[charSum % colors.length];
+    };
+
+    // Get active project details
+    const activeProjectDetails = projects.find((p: any) => p.id === activeProject);
+
     return (
-        <div className="grid grid-cols-[250px_1fr] h-full">
-            {/* Projects Sidebar */}
-            <div className="bg-muted p-4 overflow-auto">
-                <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-lg font-semibold">Projects</h2>
-                    <button
-                        onClick={() => setShowNewProjectForm(true)}
-                        className="p-1 rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
-                    >
-                        <PlusIcon className="h-4 w-4" />
-                    </button>
-                </div>
+        <div className="grid grid-cols-[250px_1fr] h-full bg-[#f5f5f7]">
+            {/* Sidebar - Softer design */}
+            <div className="bg-[#2d2d2d] p-4 overflow-auto border-r border-[#3d3d3d]">
+                <div className="flex flex-col h-full">
+                    <div className="flex items-center mb-8 px-2">
+                        <div className="w-10 h-10 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 flex items-center justify-center">
+                            <Music className="h-5 w-5 text-white" />
+                        </div>
+                        <h2 className="text-xl font-bold ml-2 text-white">Mindspace</h2>
+                    </div>
 
-                {showNewProjectForm && (
-                    <div className="mb-4 p-3 bg-card rounded-md shadow">
-                        <h3 className="text-sm font-medium mb-2">New Project</h3>
-                        <input
-                            type="text"
-                            placeholder="Project name"
-                            className="w-full p-2 mb-2 text-sm bg-background rounded border"
-                            id="project-name"
-                        />
-                        <div className="mb-2">
-                            <label htmlFor="project-header-img" className="text-xs block mb-1">Header Image (optional)</label>
-                            <div className="flex gap-2">
-                                <input
-                                    type="text"
-                                    placeholder="Image URL"
-                                    className="flex-1 p-2 text-sm bg-background rounded border"
-                                    id="project-header-img"
-                                />
-                                <span className="text-xs self-center">OR</span>
-                                <button
-                                    onClick={() => projectHeaderFileRef.current?.click()}
-                                    className="px-2 py-1 text-xs bg-gray-100 rounded hover:bg-gray-200"
-                                >
-                                    Upload
-                                </button>
-                                <input
-                                    type="file"
-                                    accept="image/*"
-                                    className="hidden"
-                                    ref={projectHeaderFileRef}
-                                    id="project-header-file"
-                                />
+                    <div className="space-y-2 mb-6">
+                        <button
+                            className={`w-full text-left px-4 py-3 rounded-md font-medium ${!activeProject ? 'bg-[#4a4a4a] text-white' : 'text-gray-300 hover:text-white hover:bg-[#3a3a3a]'}`}
+                            onClick={() => setActiveProject(null)}
+                        >
+                            <div className="flex items-center">
+                                <FolderIcon className="h-5 w-5 mr-3" />
+                                <span>All Posts</span>
                             </div>
-                            <div id="header-file-name" className="text-xs mt-1 text-muted-foreground"></div>
-                        </div>
-                        <div className="flex items-center mb-2">
-                            <input
-                                type="checkbox"
-                                id="is-public"
-                                className="mr-2"
-                            />
-                            <label htmlFor="is-public" className="text-xs">Make public</label>
-                        </div>
-                        <div className="flex justify-end gap-2">
-                            <button
-                                onClick={() => setShowNewProjectForm(false)}
-                                className="px-2 py-1 text-xs rounded hover:bg-muted"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                onClick={async () => {
-                                    const nameInput = document.getElementById('project-name') as HTMLInputElement;
-                                    const headerImgInput = document.getElementById('project-header-img') as HTMLInputElement;
-                                    const headerFileInput = document.getElementById('project-header-file') as HTMLInputElement;
-                                    const isPublicInput = document.getElementById('is-public') as HTMLInputElement;
-
-                                    await handleCreateProject({
-                                        name: nameInput.value,
-                                        headerImg: headerImgInput.value,
-                                        headerFile: headerFileInput.files?.[0],
-                                        isPublic: isPublicInput.checked
-                                    });
-                                }}
-                                className="px-2 py-1 text-xs bg-primary text-primary-foreground rounded hover:bg-primary/90"
-                            >
-                                Create
-                            </button>
-                        </div>
+                        </button>
                     </div>
-                )}
 
-                {publicProjects.length > 0 && (
-                    <div className="mb-4">
-                        <h3 className="text-sm text-muted-foreground mb-2 flex items-center">
-                            <UnlockIcon className="h-3 w-3 mr-1" /> Public Projects
-                        </h3>
-                        <ul className="space-y-1">
-                            {publicProjects.map((project: any) => (
-                                <li key={project.id}>
+                    <div className="flex items-center justify-between mb-2">
+                        <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest px-4">Your Projects</h3>
+                        <button
+                            onClick={() => {
+                                setEditingProject(null);
+                                setShowProjectForm(true);
+                            }}
+                            className="text-gray-400 hover:text-white p-1 rounded-full hover:bg-[#3a3a3a]"
+                        >
+                            <PlusIcon className="h-4 w-4" />
+                        </button>
+                    </div>
+
+                    {projects.length > 0 ? (
+                        <div className="flex flex-col space-y-1 pr-2 mb-4">
+                            {projects.map((project: any) => (
+                                <div
+                                    key={project.id}
+                                    className={`group flex items-center text-left px-3 py-2 rounded-md ${activeProject === project.id ? 'bg-[#3a3a3a] text-white' : 'text-gray-300 hover:text-white hover:bg-[#3a3a3a]'}`}
+                                >
                                     <button
-                                        className={`flex items-center w-full p-2 text-sm rounded ${activeProject === project.id ? 'bg-accent text-accent-foreground' : 'hover:bg-accent/50'}`}
-                                        onClick={() => handleSelectProject(project.id)}
+                                        className="flex-1 flex items-center"
+                                        onClick={() => setActiveProject(project.id)}
                                     >
-                                        <FolderIcon className="h-4 w-4 mr-2" />
-                                        <span className="truncate">{project.name}</span>
+                                        <div className={`w-8 h-8 ${getProjectColor(project.id)} rounded flex items-center justify-center flex-shrink-0`}>
+                                            <span className="text-white font-medium">{project.name.charAt(0).toUpperCase()}</span>
+                                        </div>
+                                        <div className="ml-3 truncate">
+                                            <div className="font-medium">{project.name}</div>
+                                            <div className="text-xs text-gray-400">{(project.projectNotes || []).length} posts</div>
+                                        </div>
                                     </button>
-                                </li>
+                                    <div className="opacity-0 group-hover:opacity-100 transition-opacity flex">
+                                        <button
+                                            onClick={() => {
+                                                setEditingProject(project.id);
+                                                setShowProjectForm(true);
+                                            }}
+                                            className="text-gray-400 hover:text-white p-1"
+                                        >
+                                            <Pencil className="h-4 w-4" />
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                if (window.confirm(`Are you sure you want to delete "${project.name}"? This will delete all posts within it.`)) {
+                                                    handleDeleteProject(project.id);
+                                                }
+                                            }}
+                                            className="text-gray-400 hover:text-red-400 p-1"
+                                        >
+                                            <Trash2 className="h-4 w-4" />
+                                        </button>
+                                    </div>
+                                </div>
                             ))}
-                        </ul>
-                    </div>
-                )}
+                        </div>
+                    ) : (
+                        <p className="text-gray-400 text-sm px-4 mb-4">No projects yet</p>
+                    )}
 
-                {privateProjects.length > 0 && (
-                    <div>
-                        <h3 className="text-sm text-muted-foreground mb-2 flex items-center">
-                            <LockIcon className="h-3 w-3 mr-1" /> Private Projects
-                        </h3>
-                        <ul className="space-y-1">
-                            {privateProjects.map((project: any) => (
-                                <li key={project.id}>
-                                    <button
-                                        className={`flex items-center w-full p-2 text-sm rounded ${activeProject === project.id ? 'bg-accent text-accent-foreground' : 'hover:bg-accent/50'}`}
-                                        onClick={() => handleSelectProject(project.id)}
-                                    >
-                                        <FolderIcon className="h-4 w-4 mr-2" />
-                                        <span className="truncate">{project.name}</span>
-                                    </button>
-                                </li>
-                            ))}
-                        </ul>
+                    <div className="mt-auto pt-4">
+                        <button
+                            onClick={() => {
+                                setEditingProject(null);
+                                setShowProjectForm(true);
+                            }}
+                            className="w-full bg-gradient-to-r from-indigo-500 to-purple-500 text-white rounded-md py-2 font-medium hover:opacity-90 transition"
+                        >
+                            New Project
+                        </button>
                     </div>
-                )}
+                </div>
             </div>
 
-            {/* Project Content */}
-            <div className="p-6 overflow-auto">
-                {!activeProject ? (
-                    <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground">
-                        <FolderIcon className="h-16 w-16 mb-4" />
-                        <h2 className="text-xl font-semibold mb-2">No Project Selected</h2>
-                        <p>Select a project from the sidebar or create a new one.</p>
-                    </div>
-                ) : (
-                    <>
-                        <div className="mb-6">
-                            <div className="flex items-center justify-between mb-4">
-                                <h1 className="text-2xl font-bold">{currentProject?.name}</h1>
-                                <div className="flex items-center gap-2">
-                                    {currentProject?.isPublic ? (
-                                        <span className="flex items-center text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
-                                            <UnlockIcon className="h-3 w-3 mr-1" /> Public
-                                        </span>
-                                    ) : (
-                                        <span className="flex items-center text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
-                                            <LockIcon className="h-3 w-3 mr-1" /> Private
-                                        </span>
-                                    )}
+            {/* Main Content - Cleaner design */}
+            <div className="bg-white overflow-auto">
+                {/* Project form modal */}
+                {showProjectForm && (
+                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                        <div className="bg-white w-full max-w-md rounded-lg shadow-lg overflow-hidden">
+                            <div className="p-4 border-b flex justify-between items-center">
+                                <h3 className="text-lg font-semibold">{editingProject ? 'Edit Project' : 'Create New Project'}</h3>
+                                <button
+                                    onClick={() => {
+                                        setShowProjectForm(false);
+                                        setEditingProject(null);
+                                    }}
+                                    className="text-gray-500 hover:text-gray-700"
+                                >
+                                    <X className="h-5 w-5" />
+                                </button>
+                            </div>
+
+                            <div className="p-4">
+                                <div className="mb-4">
+                                    <label htmlFor="project-name" className="block text-sm font-medium text-gray-700 mb-1">Project Name</label>
+                                    <input
+                                        type="text"
+                                        id="project-name"
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                        placeholder="Enter project name"
+                                        defaultValue={editingProject ? projects.find((p: any) => p.id === editingProject)?.name : ''}
+                                    />
+                                </div>
+
+                                <div className="mb-6">
+                                    <label className="flex items-center">
+                                        <input
+                                            type="checkbox"
+                                            id="project-public"
+                                            className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                                            defaultChecked={editingProject ? projects.find((p: any) => p.id === editingProject)?.isPublic : false}
+                                        />
+                                        <span className="ml-2 text-sm text-gray-700">Make this project public</span>
+                                    </label>
+                                </div>
+
+                                <div className="flex justify-end space-x-3">
                                     <button
-                                        onClick={() => setShowEditProjectForm(true)}
-                                        className="flex items-center text-xs bg-gray-100 text-gray-800 px-2 py-1 rounded hover:bg-gray-200"
+                                        onClick={() => {
+                                            setShowProjectForm(false);
+                                            setEditingProject(null);
+                                        }}
+                                        className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
                                     >
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-1">
-                                            <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"></path>
-                                        </svg>
-                                        Edit
+                                        Cancel
                                     </button>
                                     <button
                                         onClick={() => {
-                                            if (window.confirm("Are you sure you want to delete this project and all its notes? This action cannot be undone.")) {
-                                                handleDeleteProject(currentProject?.id || '');
+                                            const nameInput = document.getElementById('project-name') as HTMLInputElement;
+                                            const isPublicInput = document.getElementById('project-public') as HTMLInputElement;
+
+                                            if (!nameInput.value.trim()) {
+                                                alert('Please enter a project name');
+                                                return;
+                                            }
+
+                                            if (editingProject) {
+                                                handleUpdateProject(editingProject, {
+                                                    name: nameInput.value,
+                                                    isPublic: isPublicInput.checked
+                                                });
+                                            } else {
+                                                handleCreateProject({
+                                                    name: nameInput.value,
+                                                    isPublic: isPublicInput.checked
+                                                });
                                             }
                                         }}
-                                        className="flex items-center text-xs bg-red-100 text-red-800 px-2 py-1 rounded hover:bg-red-200"
+                                        className="px-4 py-2 bg-indigo-600 rounded-md text-sm font-medium text-white hover:bg-indigo-700"
                                     >
-                                        <Trash2 className="h-3 w-3 mr-1" /> Delete
+                                        {editingProject ? 'Save Changes' : 'Create Project'}
                                     </button>
                                 </div>
                             </div>
-
-                            {showEditProjectForm && (
-                                <div className="mb-4 p-4 bg-card rounded-md shadow">
-                                    <h3 className="text-sm font-medium mb-3">Edit Project</h3>
-                                    <div className="mb-3">
-                                        <label htmlFor="edit-project-name" className="text-sm block mb-1">Project Name</label>
-                                        <input
-                                            type="text"
-                                            id="edit-project-name"
-                                            className="w-full p-2 text-sm bg-background rounded border"
-                                            defaultValue={currentProject?.name || ''}
-                                        />
-                                    </div>
-                                    <div className="mb-3">
-                                        <label htmlFor="edit-project-header" className="text-sm block mb-1">Header Image</label>
-                                        <div className="flex gap-2 mb-2">
-                                            <input
-                                                type="text"
-                                                id="edit-project-header"
-                                                className="flex-1 p-2 text-sm bg-background rounded border"
-                                                defaultValue={currentProject?.headerImg || ''}
-                                                placeholder="Image URL"
-                                            />
-                                            <span className="text-xs self-center">OR</span>
-                                            <button
-                                                onClick={() => editProjectHeaderFileRef.current?.click()}
-                                                className="px-2 py-1 text-xs bg-gray-100 rounded hover:bg-gray-200"
-                                            >
-                                                Upload
-                                            </button>
-                                            <input
-                                                type="file"
-                                                accept="image/*"
-                                                className="hidden"
-                                                ref={editProjectHeaderFileRef}
-                                                id="edit-project-header-file"
-                                            />
-                                        </div>
-                                        <div id="edit-header-file-name" className="text-xs mt-1 text-muted-foreground"></div>
-                                        {currentProject?.headerImg && (
-                                            <div className="mt-2">
-                                                <div className="relative h-24 w-full rounded overflow-hidden">
-                                                    <img
-                                                        src={currentProject.headerImg}
-                                                        alt="Current header"
-                                                        className="h-full w-full object-cover"
-                                                    />
-                                                    <div className="absolute inset-0 bg-black bg-opacity-40 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
-                                                        <span className="text-white text-xs">Current header image</span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-                                    <div className="flex items-center mb-3">
-                                        <input
-                                            type="checkbox"
-                                            id="edit-is-public"
-                                            className="mr-2"
-                                            defaultChecked={currentProject?.isPublic || false}
-                                        />
-                                        <label htmlFor="edit-is-public" className="text-sm">Public project</label>
-                                    </div>
-                                    <div className="flex justify-end gap-2">
-                                        <button
-                                            onClick={() => setShowEditProjectForm(false)}
-                                            className="px-3 py-1 text-sm rounded hover:bg-muted"
-                                        >
-                                            Cancel
-                                        </button>
-                                        <button
-                                            onClick={async () => {
-                                                const nameInput = document.getElementById('edit-project-name') as HTMLInputElement;
-                                                const headerInput = document.getElementById('edit-project-header') as HTMLInputElement;
-                                                const headerFileInput = document.getElementById('edit-project-header-file') as HTMLInputElement;
-                                                const isPublicInput = document.getElementById('edit-is-public') as HTMLInputElement;
-
-                                                await handleUpdateProject({
-                                                    name: nameInput.value,
-                                                    headerImg: headerInput.value,
-                                                    headerFile: headerFileInput.files?.[0],
-                                                    isPublic: isPublicInput.checked
-                                                });
-                                            }}
-                                            className="px-3 py-1 text-sm bg-primary text-primary-foreground rounded hover:bg-primary/90"
-                                        >
-                                            Save Changes
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
-
-                            {currentProject?.headerImg && (
-                                <div className="w-full h-40 rounded-lg overflow-hidden mb-4">
-                                    <img
-                                        src={currentProject.headerImg}
-                                        alt={currentProject.name}
-                                        className="w-full h-full object-cover"
-                                    />
-                                </div>
-                            )}
                         </div>
+                    </div>
+                )}
 
-                        <div className="mb-6">
-                            <div className="flex items-center justify-between mb-4">
-                                <h2 className="text-lg font-semibold">Project Notes</h2>
-                                <button
-                                    onClick={() => {
-                                        setEditingNote(null);
-                                        setShowNewNoteForm(true);
-                                    }}
-                                    className="flex items-center px-3 py-1 text-sm bg-primary text-primary-foreground rounded hover:bg-primary/90"
-                                >
-                                    <PlusIcon className="h-4 w-4 mr-1" /> Add Note
-                                </button>
-                            </div>
-
-                            {showNewNoteForm && (
-                                <div className="mb-4 p-4 bg-card rounded-md shadow">
-                                    <h3 className="text-sm font-medium mb-2">
-                                        {editingNote ? 'Edit Note' : 'New Note'}
-                                    </h3>
-                                    <textarea
-                                        id="note-content"
-                                        className="w-full p-3 mb-3 text-sm bg-background rounded border min-h-[100px]"
-                                        placeholder="Enter note content..."
-                                        defaultValue={editingNote?.content || ''}
-                                    ></textarea>
-
-                                    <div className="mb-3">
-                                        <label className="text-sm block mb-1">Attachments</label>
-                                        <input
-                                            type="file"
-                                            id="note-files"
-                                            multiple
-                                            className="text-sm"
-                                        />
-                                    </div>
-
-                                    {editingNote?.attachmentUrls && editingNote.attachmentUrls.length > 0 && (
-                                        <div className="mb-3">
-                                            <label className="text-sm block mb-1">Existing Attachments</label>
-                                            {renderAttachments(editingNote.attachmentUrls)}
+                {/* Project header */}
+                {activeProject && activeProjectDetails && (
+                    <div className="bg-gradient-to-r from-indigo-900 to-purple-900 text-white p-8">
+                        <div className="max-w-[800px] mx-auto">
+                            <div className="flex items-end space-x-6">
+                                <div className={`w-32 h-32 ${getProjectColor(activeProject)} shadow-lg rounded-lg flex items-center justify-center`}>
+                                    <span className="text-4xl font-bold text-white">{activeProjectDetails.name.charAt(0)}</span>
+                                </div>
+                                <div className="flex-1">
+                                    <div className="text-xs uppercase font-bold text-indigo-200">Project</div>
+                                    <h1 className="text-4xl font-bold my-2">{activeProjectDetails.name}</h1>
+                                    <div className="flex items-center text-sm space-x-4 mt-3">
+                                        <div className="flex items-center">
+                                            <span className="font-bold">{(activeProjectDetails.projectNotes || []).length}</span>
+                                            <span className="ml-1 text-indigo-200">posts</span>
                                         </div>
-                                    )}
-
-                                    <div className="flex items-center mb-3">
-                                        <input
-                                            type="checkbox"
-                                            id="is-pinned"
-                                            className="mr-2"
-                                            defaultChecked={editingNote?.isPinned || false}
-                                        />
-                                        <label htmlFor="is-pinned" className="text-sm">Pin this note</label>
+                                        <div>
+                                            {activeProjectDetails.isPublic ? (
+                                                <span className="flex items-center px-2 py-1 bg-indigo-800/50 rounded-full text-xs">
+                                                    Public
+                                                </span>
+                                            ) : (
+                                                <span className="flex items-center px-2 py-1 bg-indigo-800/50 rounded-full text-xs">
+                                                    Private
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
-
-                                    <div className="flex justify-end gap-2">
+                                </div>
+                                <div>
+                                    <div className="flex space-x-2">
                                         <button
                                             onClick={() => {
-                                                setShowNewNoteForm(false);
-                                                setEditingNote(null);
+                                                setEditingProject(activeProject);
+                                                setShowProjectForm(true);
                                             }}
-                                            className="px-3 py-1 text-sm rounded hover:bg-muted"
+                                            className="p-2 bg-indigo-800/50 rounded-full hover:bg-indigo-700/70"
                                         >
-                                            Cancel
+                                            <Pencil className="h-4 w-4" />
                                         </button>
                                         <button
-                                            onClick={async () => {
-                                                const contentInput = document.getElementById('note-content') as HTMLTextAreaElement;
-                                                const isPinnedInput = document.getElementById('is-pinned') as HTMLInputElement;
-                                                const filesInput = document.getElementById('note-files') as HTMLInputElement;
-
-                                                const noteData = {
-                                                    content: contentInput.value,
-                                                    isPinned: isPinnedInput.checked,
-                                                    files: filesInput.files || undefined,
-                                                    attachmentUrls: editingNote?.attachmentUrls || []
-                                                };
-
-                                                if (editingNote) {
-                                                    await handleUpdateNote(editingNote.id, noteData);
-                                                } else {
-                                                    await handleCreateNote(noteData);
+                                            onClick={() => {
+                                                if (window.confirm(`Are you sure you want to delete "${activeProjectDetails.name}"? This will delete all posts within it.`)) {
+                                                    handleDeleteProject(activeProject);
                                                 }
                                             }}
-                                            className="px-3 py-1 text-sm bg-primary text-primary-foreground rounded hover:bg-primary/90"
+                                            className="p-2 bg-indigo-800/50 rounded-full hover:bg-red-700/70"
                                         >
-                                            {editingNote ? 'Update' : 'Save'}
+                                            <Trash2 className="h-4 w-4" />
                                         </button>
                                     </div>
                                 </div>
-                            )}
-
-                            {pinnedNotes.length > 0 && (
-                                <div className="mb-4">
-                                    <h3 className="text-sm text-muted-foreground mb-2 flex items-center">
-                                        <Pin className="h-3 w-3 mr-1" /> Pinned Notes
-                                    </h3>
-                                    <div className="grid grid-cols-1 gap-3">
-                                        {pinnedNotes.map((note: any) => (
-                                            <div key={note.id} className="p-4 bg-amber-50 rounded-md shadow-sm border border-amber-200">
-                                                <div className="flex justify-between items-start mb-2">
-                                                    <div className="flex-1 whitespace-pre-wrap">{note.content}</div>
-                                                    <div className="flex space-x-1 ml-2">
-                                                        <button
-                                                            onClick={() => togglePinStatus(note)}
-                                                            className="p-1 text-amber-600 hover:bg-amber-100 rounded"
-                                                        >
-                                                            <PinOff className="h-4 w-4" />
-                                                        </button>
-                                                        <button
-                                                            onClick={() => {
-                                                                setEditingNote(note);
-                                                                setShowNewNoteForm(true);
-                                                            }}
-                                                            className="p-1 text-blue-600 hover:bg-blue-100 rounded"
-                                                        >
-                                                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-pencil">
-                                                                <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"></path>
-                                                            </svg>
-                                                        </button>
-                                                        <button
-                                                            onClick={() => handleDeleteNote(note.id)}
-                                                            className="p-1 text-red-600 hover:bg-red-100 rounded"
-                                                        >
-                                                            <Trash2 className="h-4 w-4" />
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                                {note.attachmentUrls && note.attachmentUrls.length > 0 && renderAttachments(note.attachmentUrls)}
-                                                <div className="text-xs text-muted-foreground">
-                                                    {formatDate(note.createdAt)}
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-
-                            {unpinnedNotes.length > 0 ? (
-                                <div>
-                                    <h3 className="text-sm text-muted-foreground mb-2 flex items-center">
-                                        <PinOff className="h-3 w-3 mr-1" /> Other Notes
-                                    </h3>
-                                    <div className="grid grid-cols-1 gap-3">
-                                        {unpinnedNotes.map((note: any) => (
-                                            <div key={note.id} className="p-4 bg-card rounded-md shadow-sm border">
-                                                <div className="flex justify-between items-start mb-2">
-                                                    <div className="flex-1 whitespace-pre-wrap">{note.content}</div>
-                                                    <div className="flex space-x-1 ml-2">
-                                                        <button
-                                                            onClick={() => togglePinStatus(note)}
-                                                            className="p-1 text-gray-600 hover:bg-gray-100 rounded"
-                                                        >
-                                                            <Pin className="h-4 w-4" />
-                                                        </button>
-                                                        <button
-                                                            onClick={() => {
-                                                                setEditingNote(note);
-                                                                setShowNewNoteForm(true);
-                                                            }}
-                                                            className="p-1 text-blue-600 hover:bg-blue-100 rounded"
-                                                        >
-                                                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-pencil">
-                                                                <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"></path>
-                                                            </svg>
-                                                        </button>
-                                                        <button
-                                                            onClick={() => handleDeleteNote(note.id)}
-                                                            className="p-1 text-red-600 hover:bg-red-100 rounded"
-                                                        >
-                                                            <Trash2 className="h-4 w-4" />
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                                {note.attachmentUrls && note.attachmentUrls.length > 0 && renderAttachments(note.attachmentUrls)}
-                                                <div className="text-xs text-muted-foreground">
-                                                    {formatDate(note.createdAt)}
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            ) : (
-                                !pinnedNotes.length && (
-                                    <div className="flex flex-col items-center justify-center p-8 text-muted-foreground text-center">
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" className="mb-4">
-                                            <path d="M12 19l7-7 3 3-7 7-3-3z"></path>
-                                            <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"></path>
-                                            <path d="M2 2l7.586 7.586"></path>
-                                            <circle cx="11" cy="11" r="2"></circle>
-                                        </svg>
-                                        <p>No notes yet. Create your first note to get started!</p>
-                                    </div>
-                                )
-                            )}
+                            </div>
                         </div>
-                    </>
+                    </div>
                 )}
+
+                {/* What's on your mind box + Timeline */}
+                <div className="max-w-[800px] mx-auto p-4">
+                    {/* What's on your mind? box - Always present in project view */}
+                    {activeProject && (
+                        <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-6 overflow-hidden">
+                            <div className="p-4">
+                                <div className="flex">
+                                    <div className="mr-3">
+                                        <div className={`w-10 h-10 ${getProjectColor(activeProject)} rounded-full flex items-center justify-center`}>
+                                            <span className="text-white font-bold">{activeProjectDetails?.name.charAt(0).toUpperCase()}</span>
+                                        </div>
+                                    </div>
+                                    <div className="flex-1">
+                                        <textarea
+                                            id="post-content"
+                                            className="w-full p-2 text-lg border-0 focus:ring-0 focus:outline-none"
+                                            placeholder="What's on your mind?"
+                                            rows={2}
+                                        ></textarea>
+                                    </div>
+                                </div>
+
+                                <div id="image-file-name" className="text-xs ml-12 text-indigo-500"></div>
+
+                                <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
+                                    <div className="flex items-center">
+                                        <button
+                                            onClick={() => imageFileRef.current?.click()}
+                                            className="text-gray-500 p-2 rounded-full hover:bg-gray-100"
+                                        >
+                                            <ImageIcon className="h-5 w-5" />
+                                        </button>
+                                        <input
+                                            type="file"
+                                            accept="image/*"
+                                            className="hidden"
+                                            ref={imageFileRef}
+                                            id="image-file"
+                                        />
+                                    </div>
+
+                                    <button
+                                        onClick={async () => {
+                                            const contentInput = document.getElementById('post-content') as HTMLTextAreaElement;
+                                            const filesInput = document.getElementById('image-file') as HTMLInputElement;
+
+                                            if (!contentInput.value.trim()) {
+                                                alert("Please enter some content for your post");
+                                                return;
+                                            }
+
+                                            await handleCreatePost({
+                                                content: contentInput.value,
+                                                files: filesInput.files || undefined
+                                            });
+
+                                            // Clear the input after posting
+                                            contentInput.value = '';
+                                            if (filesInput) filesInput.value = '';
+                                            const fileNameDiv = document.getElementById('image-file-name');
+                                            if (fileNameDiv) fileNameDiv.textContent = '';
+                                        }}
+                                        className="px-4 py-2 bg-indigo-600 text-white rounded-full hover:bg-indigo-700 font-medium text-sm"
+                                    >
+                                        Post
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* No active project state */}
+                    {!activeProject && (
+                        <div className="text-center py-8 mb-6">
+                            <div className="w-20 h-20 rounded-full bg-indigo-100 flex items-center justify-center mx-auto mb-4">
+                                <FolderIcon className="h-10 w-10 text-indigo-600" />
+                            </div>
+                            <h2 className="text-xl font-bold text-gray-800">Welcome to Mindspace</h2>
+                            <p className="text-gray-500 mt-2 mb-6">Select a project from the sidebar or create a new one</p>
+                            <button
+                                onClick={() => {
+                                    setEditingProject(null);
+                                    setShowProjectForm(true);
+                                }}
+                                className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 font-medium"
+                            >
+                                Create Your First Project
+                            </button>
+                        </div>
+                    )}
+
+                    {/* Posts Feed */}
+                    <div className="divide-y divide-gray-200">
+                        {activeProject ? (
+                            // Show posts from active project
+                            allPosts
+                                .filter(post => post.projectId === activeProject)
+                                .map((post: Post) => (
+                                    <div key={post.id} className="py-4">
+                                        <div className="flex">
+                                            <div className="mr-3">
+                                                <div className={`w-10 h-10 ${getProjectColor(post.projectId)} rounded-full flex items-center justify-center`}>
+                                                    <span className="text-white font-bold">{post.projectName.charAt(0).toUpperCase()}</span>
+                                                </div>
+                                            </div>
+                                            <div className="flex-1">
+                                                <div className="flex items-center">
+                                                    <span className="font-bold mr-1">{post.projectName}</span>
+                                                    <span className="text-gray-500 text-sm">· {formatDate(post.createdAt)}</span>
+                                                    <div className="ml-auto">
+                                                        <button
+                                                            onClick={() => handleDeletePost(post.id)}
+                                                            className="text-gray-400 hover:text-red-500 p-1"
+                                                        >
+                                                            <Trash2 className="h-4 w-4" />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                <p className="mt-1 whitespace-pre-wrap text-gray-800">{post.content}</p>
+                                                {post.attachmentUrls && post.attachmentUrls.length > 0 && renderAttachments(post.attachmentUrls)}
+
+                                                <div className="flex items-center space-x-6 mt-3 text-gray-500">
+                                                    <button className="flex items-center text-gray-500 hover:text-blue-500">
+                                                        <MessageCircle className="h-4 w-4 mr-1" />
+                                                        <span className="text-xs">{post.commentCount || 0}</span>
+                                                    </button>
+                                                    <button className="flex items-center text-gray-500 hover:text-green-500">
+                                                        <Repeat className="h-4 w-4 mr-1" />
+                                                        <span className="text-xs">{post.retweetCount || 0}</span>
+                                                    </button>
+                                                    <button
+                                                        className="flex items-center text-gray-500 hover:text-red-500"
+                                                        onClick={() => toggleLike(post)}
+                                                    >
+                                                        <Heart className="h-4 w-4 mr-1" />
+                                                        <span className="text-xs">{post.likeCount || 0}</span>
+                                                    </button>
+                                                    <button className="flex items-center text-gray-500 hover:text-blue-500">
+                                                        <Share className="h-4 w-4" />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))
+                        ) : (
+                            // Show all posts in home feed
+                            allPosts.map((post: Post) => (
+                                <div key={post.id} className="py-4">
+                                    <div className="flex">
+                                        <div className="mr-3">
+                                            <div className={`w-10 h-10 ${getProjectColor(post.projectId)} rounded-full flex items-center justify-center`}>
+                                                <span className="text-white font-bold">{post.projectName.charAt(0).toUpperCase()}</span>
+                                            </div>
+                                        </div>
+                                        <div className="flex-1">
+                                            <div className="flex items-center">
+                                                <span
+                                                    className="font-bold mr-1 hover:text-indigo-600 cursor-pointer"
+                                                    onClick={() => setActiveProject(post.projectId)}
+                                                >
+                                                    {post.projectName}
+                                                </span>
+                                                <span className="text-gray-500 text-sm">· {formatDate(post.createdAt)}</span>
+                                            </div>
+                                            <p className="mt-1 whitespace-pre-wrap text-gray-800">{post.content}</p>
+                                            {post.attachmentUrls && post.attachmentUrls.length > 0 && renderAttachments(post.attachmentUrls)}
+
+                                            <div className="flex items-center space-x-6 mt-3 text-gray-500">
+                                                <button className="flex items-center text-gray-500 hover:text-blue-500">
+                                                    <MessageCircle className="h-4 w-4 mr-1" />
+                                                    <span className="text-xs">{post.commentCount || 0}</span>
+                                                </button>
+                                                <button className="flex items-center text-gray-500 hover:text-green-500">
+                                                    <Repeat className="h-4 w-4 mr-1" />
+                                                    <span className="text-xs">{post.retweetCount || 0}</span>
+                                                </button>
+                                                <button
+                                                    className="flex items-center text-gray-500 hover:text-red-500"
+                                                    onClick={() => toggleLike(post)}
+                                                >
+                                                    <Heart className="h-4 w-4 mr-1" />
+                                                    <span className="text-xs">{post.likeCount || 0}</span>
+                                                </button>
+                                                <button className="flex items-center text-gray-500 hover:text-blue-500">
+                                                    <Share className="h-4 w-4" />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))
+                        )}
+
+                        {allPosts.length === 0 && activeProject && (
+                            <div className="flex flex-col items-center justify-center py-12 text-center text-gray-500">
+                                <div className="w-16 h-16 mb-4 rounded-full bg-indigo-50 flex items-center justify-center">
+                                    <MessageCircle className="h-8 w-8 text-indigo-500" />
+                                </div>
+                                <p className="text-lg font-medium text-gray-700">No posts yet</p>
+                                <p className="text-sm text-gray-500 mt-1">Share your thoughts to get started</p>
+                            </div>
+                        )}
+                    </div>
+                </div>
             </div>
         </div>
     );
