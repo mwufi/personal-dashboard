@@ -10,6 +10,7 @@ import db from "../lib/instant";
 
 interface BlogData {
     blogPosts?: BlogPost[];
+    [key: string]: any; // Add index signature for InstantDB compatibility
 }
 
 export default function BlogPostsView() {
@@ -17,7 +18,6 @@ export default function BlogPostsView() {
     const [formData, setFormData] = useState({
         title: "",
         content: "",
-        tags: "",
         status: "draft" as BlogPost["status"],
     });
 
@@ -35,16 +35,15 @@ export default function BlogPostsView() {
     const handleSavePost = () => {
         const now = new Date().toISOString();
 
-        if (activePost) {
+        if (activePost?.id) {
             // Update existing post
             db.transact(
                 db.tx.blogPosts[activePost.id].update({
-                    title: formData.title,
-                    content: formData.content,
-                    tags: formData.tags.split(",").map(tag => tag.trim()).filter(Boolean),
+                    title: formData.title || '',
+                    content: formData.content || '',
                     status: formData.status,
                     lastEdited: now,
-                    ...(formData.status === "published" && { publishedDate: now }),
+                    ...(formData.status === "published" && { publishedDate: now })
                 })
             );
         } else {
@@ -52,9 +51,8 @@ export default function BlogPostsView() {
             const postId = id();
             db.transact(
                 db.tx.blogPosts[postId].update({
-                    title: formData.title,
-                    content: formData.content,
-                    tags: formData.tags.split(",").map(tag => tag.trim()).filter(Boolean),
+                    title: formData.title || '',
+                    content: formData.content || '',
                     status: formData.status,
                     lastEdited: now,
                     createdAt: now,
@@ -72,7 +70,7 @@ export default function BlogPostsView() {
             db.tx.blogPosts[post.id].update({
                 status: "published",
                 publishedDate: new Date().toISOString(),
-                lastEdited: new Date().toISOString(),
+                lastEdited: new Date().toISOString()
             })
         );
     };
@@ -83,7 +81,6 @@ export default function BlogPostsView() {
         setFormData({
             title: post.title,
             content: post.content,
-            tags: post.tags ? post.tags.join(", ") : "",
             status: post.status,
         });
     };
@@ -94,7 +91,6 @@ export default function BlogPostsView() {
         setFormData({
             title: "",
             content: "",
-            tags: "",
             status: "draft",
         });
     };
@@ -141,15 +137,6 @@ export default function BlogPostsView() {
                                 value={formData.content}
                                 onChange={(e) => setFormData({ ...formData, content: e.target.value })}
                                 placeholder="Write your post content here..."
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="tags">Tags (comma separated)</Label>
-                            <Input
-                                id="tags"
-                                value={formData.tags}
-                                onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
-                                placeholder="tech, thoughts, learning"
                             />
                         </div>
                         <div className="space-y-2">
@@ -201,15 +188,6 @@ export default function BlogPostsView() {
                                 </CardHeader>
                                 <CardContent>
                                     <div className="line-clamp-3 text-sm mb-2">{post.content}</div>
-                                    {post.tags && post.tags.length > 0 && (
-                                        <div className="flex flex-wrap gap-1 mt-2">
-                                            {post.tags.map((tag) => (
-                                                <Badge key={tag} variant="outline" className="text-xs">
-                                                    {tag}
-                                                </Badge>
-                                            ))}
-                                        </div>
-                                    )}
                                 </CardContent>
                                 <CardFooter className="justify-between">
                                     <div className="text-xs text-muted-foreground">
