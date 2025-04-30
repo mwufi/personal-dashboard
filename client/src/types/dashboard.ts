@@ -60,6 +60,7 @@ export interface BlogPost {
     status: 'draft' | 'published';
     lastEdited: string;
     publishedDate?: string;
+    headerImgUrl?: string;
     createdAt: string;
 }
 

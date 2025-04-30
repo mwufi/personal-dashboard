@@ -14,6 +14,7 @@ export default function BlogPostsView() {
         title: "",
         content: "",
         status: "draft" as BlogPost["status"],
+        headerImgUrl: "",
     });
 
     // Query to get blog posts
@@ -37,6 +38,7 @@ export default function BlogPostsView() {
                     title: formData.title || '',
                     content: formData.content || '',
                     status: formData.status,
+                    headerImgUrl: formData.headerImgUrl || '',
                     lastEdited: now,
                     ...(formData.status === "published" && { publishedDate: now })
                 })
@@ -49,6 +51,7 @@ export default function BlogPostsView() {
                     title: formData.title || '',
                     content: formData.content || '',
                     status: formData.status,
+                    headerImgUrl: formData.headerImgUrl || '',
                     lastEdited: now,
                     createdAt: now,
                     ...(formData.status === "published" && { publishedDate: now }),
@@ -77,6 +80,7 @@ export default function BlogPostsView() {
             title: post.title,
             content: post.content,
             status: post.status,
+            headerImgUrl: post.headerImgUrl || '',
         });
     };
 
@@ -87,6 +91,7 @@ export default function BlogPostsView() {
             title: "",
             content: "",
             status: "draft",
+            headerImgUrl: "",
         });
     };
 
@@ -106,6 +111,17 @@ export default function BlogPostsView() {
         lastEdited: '',
         createdAt: '',
     });
+
+    // Format date to be more readable
+    const formatDate = (dateString: string) => {
+        if (!dateString) return "";
+        const date = new Date(dateString);
+        return date.toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric'
+        });
+    };
 
     return (
         <div className="p-6 max-w-4xl mx-auto">
@@ -146,12 +162,37 @@ export default function BlogPostsView() {
                         </div>
                     </div>
 
-                    <div>
+                    <div className="space-y-4">
+                        <div>
+                            <Label htmlFor="headerImgUrl" className="text-sm text-gray-500">Header Image URL</Label>
+                            <Input
+                                id="headerImgUrl"
+                                value={formData.headerImgUrl}
+                                onChange={(e) => setFormData({ ...formData, headerImgUrl: e.target.value })}
+                                placeholder="https://example.com/image.jpg"
+                                className="w-full text-sm"
+                            />
+                        </div>
+
+                        {formData.headerImgUrl && (
+                            <div className="relative w-full h-64 bg-gray-100 rounded-lg overflow-hidden">
+                                <img
+                                    src={formData.headerImgUrl}
+                                    alt="Header"
+                                    className="w-full h-full object-cover"
+                                    onError={(e) => {
+                                        (e.target as HTMLImageElement).onerror = null;
+                                        (e.target as HTMLImageElement).src = 'https://via.placeholder.com/800x400?text=Invalid+Image+URL';
+                                    }}
+                                />
+                            </div>
+                        )}
+
                         <Input
                             value={formData.title}
                             onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                             placeholder="Title"
-                            className="w-full border-none text-4xl font-bold mb-4 focus:outline-none focus:ring-0 p-0 placeholder:text-gray-300"
+                            className="w-full border-none md:text-4xl font-bold mb-4 focus:outline-none focus:ring-0 p-0 placeholder:text-gray-300 md:py-4 min-h-16"
                             required
                         />
                     </div>
@@ -165,55 +206,129 @@ export default function BlogPostsView() {
                 </div>
             )}
 
-            {/* Blog Posts List */}
+            {/* Blog Posts List - Substack Style */}
             {activePost === null && (
-                <div className="space-y-12">
-                    {blogPosts.map((post) => (
-                        <div key={post.id} className="border-b pb-8 last:border-b-0">
-                            <div className="flex justify-between items-start mb-4">
-                                <h2 className="text-3xl font-bold mb-2">{post.title}</h2>
-                                <div className="flex gap-2 items-center">
-                                    <Badge className={post.status === "draft" ? "bg-yellow-100 text-yellow-800" : "bg-green-100 text-green-800"}>
-                                        {post.status === "draft" ? "Draft" : "Published"}
-                                    </Badge>
-                                    <Button variant="ghost" size="sm" onClick={() => handleEdit(post)}>
-                                        Edit
-                                    </Button>
-                                </div>
-                            </div>
-                            <div className="flex gap-6">
-                                <div className="w-2/3">
-                                    <div className="font-serif text-lg whitespace-pre-line">{post.content}</div>
-                                </div>
-                                <div className="w-1/3 text-sm space-y-4">
-                                    <div>
-                                        <p className="text-gray-500">Created</p>
-                                        <p>{new Date(post.createdAt).toLocaleDateString()}</p>
+                <div>
+                    {/* Featured Post (first published) */}
+                    {blogPosts.filter(post => post.status === "published").length > 0 && (
+                        <div className="mb-16">
+                            {(() => {
+                                const featuredPost = [...blogPosts]
+                                    .filter(post => post.status === "published")
+                                    .sort((a, b) => new Date(b.publishedDate || 0).getTime() - new Date(a.publishedDate || 0).getTime())[0];
+
+                                return (
+                                    <div key={featuredPost.id} className="cursor-pointer" onClick={() => handleEdit(featuredPost)}>
+                                        {featuredPost.headerImgUrl && (
+                                            <div className="relative w-full h-80 mb-6 bg-gray-100 rounded-lg overflow-hidden">
+                                                <img
+                                                    src={featuredPost.headerImgUrl}
+                                                    alt={featuredPost.title}
+                                                    className="w-full h-full object-cover"
+                                                    onError={(e) => {
+                                                        (e.target as HTMLImageElement).onerror = null;
+                                                        (e.target as HTMLImageElement).src = 'https://via.placeholder.com/800x400?text=Image+Not+Found';
+                                                    }}
+                                                />
+                                            </div>
+                                        )}
+                                        <h2 className="text-4xl font-bold mb-3">{featuredPost.title}</h2>
+                                        <p className="text-lg font-serif mb-4 line-clamp-3">{featuredPost.content}</p>
+                                        <div className="flex justify-between items-center">
+                                            <p className="text-gray-500">
+                                                {formatDate(featuredPost.publishedDate || featuredPost.createdAt)}
+                                            </p>
+                                            <div className="flex gap-2">
+                                                <Button variant="ghost" size="sm" onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleEdit(featuredPost);
+                                                }}>
+                                                    Edit
+                                                </Button>
+                                                <Button variant="ghost" size="sm" className="text-red-500" onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleDelete(featuredPost.id);
+                                                }}>
+                                                    Delete
+                                                </Button>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <p className="text-gray-500">Last edited</p>
-                                        <p>{new Date(post.lastEdited).toLocaleDateString()}</p>
-                                    </div>
-                                    {post.publishedDate && (
-                                        <div>
-                                            <p className="text-gray-500">Published</p>
-                                            <p>{new Date(post.publishedDate).toLocaleDateString()}</p>
+                                );
+                            })()}
+                        </div>
+                    )}
+
+                    {/* Other Posts */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-12">
+                        {blogPosts
+                            .filter(post => {
+                                // If we have a featured post, exclude it from this list
+                                if (blogPosts.filter(p => p.status === "published").length > 0) {
+                                    const featuredPostId = [...blogPosts]
+                                        .filter(p => p.status === "published")
+                                        .sort((a, b) => new Date(b.publishedDate || 0).getTime() - new Date(a.publishedDate || 0).getTime())[0].id;
+                                    return post.id !== featuredPostId;
+                                }
+                                return true;
+                            })
+                            .sort((a, b) => {
+                                // First sort by status (published first)
+                                if (a.status === "published" && b.status !== "published") return -1;
+                                if (a.status !== "published" && b.status === "published") return 1;
+
+                                // Then by date
+                                const dateA = a.status === "published" ? a.publishedDate : a.lastEdited;
+                                const dateB = b.status === "published" ? b.publishedDate : b.lastEdited;
+                                return new Date(dateB || 0).getTime() - new Date(dateA || 0).getTime();
+                            })
+                            .map(post => (
+                                <div key={post.id} className="cursor-pointer" onClick={() => handleEdit(post)}>
+                                    {post.headerImgUrl && (
+                                        <div className="relative w-full h-48 mb-4 bg-gray-100 rounded-lg overflow-hidden">
+                                            <img
+                                                src={post.headerImgUrl}
+                                                alt={post.title}
+                                                className="w-full h-full object-cover"
+                                                onError={(e) => {
+                                                    (e.target as HTMLImageElement).onerror = null;
+                                                    (e.target as HTMLImageElement).src = 'https://via.placeholder.com/400x200?text=Image+Not+Found';
+                                                }}
+                                            />
                                         </div>
                                     )}
-                                    <div className="pt-4">
+
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <Badge className={post.status === "draft" ? "bg-yellow-100 text-yellow-800" : "bg-green-100 text-green-800"}>
+                                            {post.status === "draft" ? "Draft" : "Published"}
+                                        </Badge>
+                                        <span className="text-sm text-gray-500">
+                                            {formatDate(post.status === "published" ? post.publishedDate || "" : post.lastEdited)}
+                                        </span>
+                                    </div>
+
+                                    <h3 className="text-xl font-bold mb-2 line-clamp-2">{post.title}</h3>
+                                    <p className="text-gray-700 font-serif mb-3 line-clamp-3">{post.content}</p>
+
+                                    <div className="flex justify-end gap-2">
                                         {post.status === "draft" && (
-                                            <Button variant="outline" size="sm" onClick={() => handlePublish(post)}>
+                                            <Button variant="outline" size="sm" onClick={(e) => {
+                                                e.stopPropagation();
+                                                handlePublish(post);
+                                            }}>
                                                 Publish
                                             </Button>
                                         )}
-                                        <Button variant="ghost" size="sm" className="text-red-500 ml-2" onClick={() => handleDelete(post.id)}>
+                                        <Button variant="ghost" size="sm" className="text-red-500" onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleDelete(post.id);
+                                        }}>
                                             Delete
                                         </Button>
                                     </div>
                                 </div>
-                            </div>
-                        </div>
-                    ))}
+                            ))}
+                    </div>
 
                     {blogPosts.length === 0 && (
                         <div className="text-center py-12">
