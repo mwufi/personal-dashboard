@@ -93,6 +93,12 @@ const _schema = i.schema({
       done: i.boolean(),
       text: i.string(),
     }),
+    sessions: i.entity({
+      name: i.string(),
+      createdAt: i.string(),
+      paused: i.boolean(),
+      finishedAt: i.string(),
+    }),
     waterIntakes: i.entity({
       amount: i.number(),
       createdAt: i.string(),
@@ -165,13 +171,26 @@ const _schema = i.schema({
         onDelete: "cascade",
       },
     },
+    projectsSessions: {
+      forward: {
+        on: "projects",
+        has: "many",
+        label: "sessions",
+      },
+      reverse: {
+        on: "sessions",
+        has: "one",
+        label: "project",
+        onDelete: "cascade",
+      },
+    },
   },
   rooms: {},
 });
 
 // This helps Typescript display nicer intellisense
 type _AppSchema = typeof _schema;
-interface AppSchema extends _AppSchema {}
+interface AppSchema extends _AppSchema { }
 const schema: AppSchema = _schema;
 
 export type { AppSchema };

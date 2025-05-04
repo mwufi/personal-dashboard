@@ -1,4 +1,4 @@
-import { BookOpenIcon, DropletIcon, PencilIcon, BarChartIcon, LayoutDashboardIcon, FolderKanbanIcon } from "lucide-react";
+import { BookOpenIcon, DropletIcon, PencilIcon, BarChartIcon, LayoutDashboardIcon, FolderKanbanIcon, CalendarIcon } from "lucide-react";
 import { SidebarProps } from "../types/dashboard";
 import { cn } from "../lib/utils";
 
@@ -32,6 +32,11 @@ const navItems = [
         id: "habits",
         label: "Habit Tracker",
         icon: <BarChartIcon className="h-5 w-5" />,
+    },
+    {
+        id: "calendar",
+        label: "Calendar",
+        icon: <CalendarIcon className="h-5 w-5" />,
     },
 ];
 

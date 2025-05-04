@@ -7,6 +7,7 @@ import WaterIntakeView from "./WaterIntakeView";
 import BlogPostsView from "./BlogPostsView";
 import HabitsView from "./HabitsView";
 import ProjectsView from "./ProjectsView";
+import CalendarView from "./CalendarView";
 import "./Dashboard.css";
 
 export default function Dashboard() {
@@ -36,6 +37,8 @@ export default function Dashboard() {
                 return <BlogPostsView />;
             case "habits":
                 return <HabitsView />;
+            case "calendar":
+                return <CalendarView />;
             default:
                 return <Overview />;
         }

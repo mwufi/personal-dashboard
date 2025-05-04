@@ -81,6 +81,15 @@ export interface HabitCompletion {
     createdAt: string;
 }
 
+export interface Session {
+    id: string;
+    name: string;
+    createdAt: string;
+    paused: boolean;
+    finishedAt: string;
+    project?: Project[];
+}
+
 // Component Props Interfaces
 export interface CollectionListProps {
     collections: Collection[];
