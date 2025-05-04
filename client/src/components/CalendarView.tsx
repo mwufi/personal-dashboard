@@ -186,7 +186,7 @@ export default function CalendarView() {
     useEffect(() => {
         if (data?.sessions && data.sessions.length > 0) {
             // Find first non-paused session
-            const active = data.sessions.find(s => s && !s.paused);
+            const active = data.sessions.find(s => s && !s.paused && !s.finishedAt);
             if (active) {
                 setActiveSession(active as unknown as Session);
             }
